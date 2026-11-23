@@ -14,6 +14,7 @@ import AuditPage from './pages/AuditPage';
 import SelfTestPage from './pages/SelfTestPage';
 import DashboardPage from './pages/DashboardPage';
 import CategoriesPage from './pages/CategoriesPage';
+import ApprovalsPage from './pages/ApprovalsPage';
 
 /**
  * E1 · Access control (FR numbers = the team FR list).
@@ -34,6 +35,7 @@ export default {
     { path: '/admin', element: <Navigate to="/admin/dashboard" replace />, layout: 'console', roles: ['ADMIN'] },
     { path: '/admin/dashboard', element: <DashboardPage />, layout: 'console', permission: 'role:manage' },
     { path: '/admin/categories', element: <CategoriesPage />, layout: 'console', permission: 'category:manage' },
+    { path: '/admin/approvals', element: <ApprovalsPage />, layout: 'console', permission: 'user:approve' },  // seller shops + listings
     { path: '/admin/users', element: <UsersPage />, layout: 'console', permission: 'user:assign_role' },   // FR-06, 07
     { path: '/admin/roles', element: <RolesPage />, layout: 'console', permission: 'role:manage' },        // FR-07
     { path: '/admin/matrix', element: <MatrixPage />, layout: 'console', permission: 'role:manage' },      // FR-12
@@ -43,6 +45,7 @@ export default {
   ],
   nav: [
     { area: 'console', to: '/admin/dashboard', label: 'Overview', icon: 'grid', section: 'Store', permission: 'role:manage', top: true },
+    { area: 'console', to: '/admin/approvals', label: 'Approvals', icon: 'check', section: 'Store', permission: 'user:approve', top: true },
     { area: 'console', to: '/admin/categories', label: 'Categories', icon: 'tree', section: 'Store', permission: 'category:manage', top: true },
     { area: 'console', to: '/admin/users', label: 'Users', icon: 'users', section: 'People & access', permission: 'user:assign_role', top: true },
     { area: 'console', to: '/admin/roles', label: 'Roles', icon: 'tree', section: 'People & access', permission: 'role:manage' },

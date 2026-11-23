@@ -20,6 +20,37 @@ function Soon({ icon, title, text }) {
   return <div className="pt-empty ws-card"><Icon name={icon} /><h3>{title}</h3><p className="muted">{text}</p></div>;
 }
 
+/** Seller approval banner: shown on every tab until an admin approves the shop. */
+function ShopGate({ shop, reapplyDays, onShop }) {
+  const [state, setState] = useState(null);
+  if (!shop || shop.status === 'APPROVED') return null;
+  const rejected = shop.status === 'REJECTED';
+  const readyAt = shop.canReapplyAt ? new Date(shop.canReapplyAt) : null;
+  const ready = rejected && readyAt && readyAt <= new Date();
+  async function reapply() {
+    setState({ busy: true });
+    try { const { shop: sh } = await api('/seller/shop/reapply', { method: 'POST' }); onShop(sh); setState(null); } catch (e) { setState({ err: e.message }); }
+  }
+  return (
+    <div className={`shop-gate ${rejected ? 'rejected' : ''}`} role="status">
+      <Icon name={rejected ? 'alert' : 'clock'} />
+      <div style={{ flex: 1 }}>
+        <b>{rejected ? 'Your shop was not approved' : 'Your shop is waiting for admin approval'}</b>
+        {rejected ? (
+          <>
+            <p><b>Reason:</b> {shop.reviewNote}</p>
+            <p>Fix your shop details on <Link to="?tab=shop">My shop</Link>, then apply again. {ready ? 'You can apply again now.' : `You can apply again from ${readyAt ? readyAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'later'} (${reapplyDays} days after the decision).`}</p>
+          </>
+        ) : (
+          <p>You can set up your shop details, logo and banner now. Until an admin approves the shop, customers cannot see it and you cannot change products.</p>
+        )}
+        {state && state.err && <span className="inv-msg err">{state.err}</span>}
+      </div>
+      {rejected && <button className="btn small primary" disabled={!ready || (state && state.busy)} onClick={reapply}>Apply again</button>}
+    </div>
+  );
+}
+
 function Seg({ value, onChange }) {
   return <div className="seg">{PERIODS.map(([k, l]) => <button key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{l}</button>)}</div>;
 }
@@ -152,7 +183,7 @@ function CategoryPicker({ tree, value, onChange }) {
   );
 }
 
-function Row({ p, cats, tree, onSaved }) {
+function Row({ p, cats, tree, onSaved, locked }) {
   const [price, setPrice] = useState(String(p.price));
   const [stock, setStock] = useState(String(p.stock));
   const [state, setState] = useState(null);
@@ -182,9 +213,9 @@ function Row({ p, cats, tree, onSaved }) {
         <td><input className="inv-qty" type="number" min="0" value={stock} onChange={(e) => setStock(e.target.value)} aria-label={`Stock of ${p.name}`} /></td>
         <td className="right">
           <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
-            <button className={`btn small ${p.featured ? 'primary' : ''}`} onClick={feature} title="Show first on your shop page">{p.featured ? '★ Featured' : '☆ Feature'}</button>
-            <button className="btn small" onClick={() => setOpen(!open)} aria-expanded={open}>Categories</button>
-            <button className="btn small primary" disabled={!dirty || (state && state.busy)} onClick={save}>Save</button>
+            <button className={`btn small ${p.featured ? 'primary' : ''}`} disabled={locked} onClick={feature} title="Show first on your shop page">{p.featured ? '★ Featured' : '☆ Feature'}</button>
+            <button className="btn small" disabled={locked} onClick={() => setOpen(!open)} aria-expanded={open}>Categories</button>
+            <button className="btn small primary" disabled={locked || !dirty || (state && state.busy)} onClick={save}>Save</button>
           </div>
           {state && state.ok && <span className="inv-msg ok"><Icon name="check" />{state.ok}</span>}
           {state && state.err && <span className="inv-msg err">{state.err}</span>}
@@ -237,8 +268,259 @@ function OwnershipCheck({ myId }) {
   );
 }
 
-function Inventory({ products, setProducts, cats, me }) {
+function NewProductCard({ cats, tree, onCreated, onCancel }) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [mrp, setMrp] = useState('');
+  const [stock, setStock] = useState('10');
+  const [catIds, setCatIds] = useState([]);
+  const [image, setImage] = useState('vase');
+  const [imageUrl, setImageUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleImageFile(file) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Choose a PNG, JPG or WebP image.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5 MB.');
+      return;
+    }
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/seller/products/upload-image', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type, Authorization: `Bearer ${tokenStore.get()}` },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `Upload failed (${res.status})`);
+      setImageUrl(data.imageUrl);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setError(null);
+    if (!name.trim() || name.trim().length < 2) {
+      setError('Enter a product name (at least 2 characters).');
+      return;
+    }
+    const numPrice = Number(price);
+    if (!price || isNaN(numPrice) || numPrice < 0) {
+      setError('Enter a valid selling price.');
+      return;
+    }
+    const numMrp = mrp ? Number(mrp) : numPrice;
+    if (isNaN(numMrp) || numMrp < numPrice) {
+      setError('MRP must be at least the selling price.');
+      return;
+    }
+    const numStock = Number(stock);
+    if (isNaN(numStock) || numStock < 0) {
+      setError('Enter a valid stock number.');
+      return;
+    }
+    if (!catIds.length) {
+      setError('Pick at least one category.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const data = await api('/seller/products', {
+        method: 'POST',
+        body: {
+          name: name.trim(),
+          description: description.trim(),
+          price: numPrice,
+          mrp: numMrp,
+          stock: Math.floor(numStock),
+          image,
+          imageUrl: imageUrl || null,
+          categoryIds: catIds,
+        },
+      });
+      onCreated(data.product);
+    } catch (e) {
+      setError(e.details ? Object.entries(e.details).map(([k, v]) => `${k} ${v}`).join(', ') : e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="ws-card" style={{ marginBottom: '24px', borderColor: 'var(--line-2)' }}>
+      <div className="chart-head" style={{ marginBottom: '16px' }}>
+        <div>
+          <h2>Add new product to your shop</h2>
+          <p className="muted small">List a handcrafted item with photo, pricing, inventory stock, and categories.</p>
+        </div>
+        <button type="button" className="btn small" onClick={onCancel}><Icon name="x" />Cancel</button>
+      </div>
+
+      {error && (
+        <div className="alert error" style={{ marginBottom: '16px' }}>
+          <Icon name="alert" /><span>{error}</span>
+        </div>
+      )}
+
+      <form onSubmit={submit} noValidate>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div>
+            <label className="field-label" htmlFor="np-name">Product Name *</label>
+            <input
+              id="np-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Stoneware Ceramic Mug"
+              required
+              autoFocus
+            />
+
+            <label className="field-label" htmlFor="np-desc" style={{ marginTop: '12px' }}>Description</label>
+            <textarea
+              id="np-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Details on material, size, care, or crafting technique..."
+              maxLength={400}
+              style={{ minHeight: '80px' }}
+            />
+            <small className="muted" style={{ display: 'block', fontSize: '11px', textAlign: 'right' }}>{description.length}/400</small>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+              <div>
+                <label className="field-label" htmlFor="np-price">Selling Price (₹) *</label>
+                <input
+                  id="np-price"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="e.g. 1499"
+                  required
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="np-mrp">MRP / List (₹)</label>
+                <input
+                  id="np-mrp"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={mrp}
+                  onChange={(e) => setMrp(e.target.value)}
+                  placeholder={price ? `e.g. ${Math.round(Number(price) * 1.2)}` : 'e.g. 1999'}
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="np-stock">Stock Quantity *</label>
+                <input
+                  id="np-stock"
+                  type="number"
+                  min="0"
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div style={{ marginTop: '16px' }}>
+              <label className="field-label">Categories * (Select 1 to 8)</label>
+              <CategoryPicker tree={tree} value={catIds} onChange={setCatIds} />
+            </div>
+          </div>
+
+          <div>
+            <label className="field-label">Product Photo</label>
+            <div className="img-pick" style={{ marginTop: '4px', background: '#F8F6F1', padding: '14px', borderRadius: '10px' }}>
+              <div
+                className="img-prev"
+                style={{
+                  width: '100%',
+                  height: '180px',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  background: '#EDE6DE',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {imageUrl ? (
+                  <img src={imageUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                ) : (
+                  <ProductArt image={image} label={name || 'Preview'} />
+                )}
+              </div>
+
+              <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <label className={`btn small primary ${uploading ? 'disabled' : ''}`}>
+                  <Icon name="edit" />{uploading ? 'Uploading…' : imageUrl ? 'Replace photo' : 'Upload photo'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    hidden
+                    disabled={uploading}
+                    onChange={(e) => handleImageFile(e.target.files[0])}
+                  />
+                </label>
+                {imageUrl && (
+                  <button type="button" className="btn small" onClick={() => setImageUrl('')}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <small className="muted" style={{ display: 'block', marginTop: '6px', fontSize: '11.5px' }}>
+                PNG, JPG or WebP (up to 5 MB).
+              </small>
+
+              <label className="field-label" style={{ marginTop: '16px' }}>Fallback Illustration</label>
+              <select value={image} onChange={(e) => setImage(e.target.value)} style={{ width: '100%' }}>
+                <option value="vase">Vase / Pottery</option>
+                <option value="bowl">Bowl / Dish</option>
+                <option value="candle">Candle</option>
+                <option value="chair">Chair / Furniture</option>
+                <option value="lamp">Lamp / Lighting</option>
+                <option value="speaker">Speaker / Audio</option>
+                <option value="headphones">Headphones</option>
+                <option value="sleeve">Case / Sleeve</option>
+                <option value="bottle">Bottle / Skincare</option>
+                <option value="baguette">Baguette / Bakery</option>
+                <option value="book">Book / Notebook</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="row-actions" style={{ marginTop: '20px', justifyContent: 'flex-end', borderTop: '1px solid var(--line)', paddingTop: '16px' }}>
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button type="submit" className="btn primary" disabled={busy || uploading}>
+            {busy ? 'Publishing…' : 'Publish Product'}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+function Inventory({ products, setProducts, cats, me, locked }) {
   const [filter, setFilter] = useState('');
+  const [adding, setAdding] = useState(false);
   const tree = useMemo(() => buildTree(cats), [cats]);
   const shown = (products || []).filter((p) => `${p.name} ${p.categoryNames.join(' ')} ${p.status}`.toLowerCase().includes(filter.toLowerCase()));
   const saved = (np) => setProducts((list) => list.map((x) => (x.id === np.id ? np : x)));
@@ -246,13 +528,29 @@ function Inventory({ products, setProducts, cats, me }) {
     <>
       <div className="ws-head">
         <div><h1>Product inventory</h1><p>{products ? `${products.length} listing${products.length === 1 ? '' : 's'}` : 'loading…'} · prices, stock, categories and featured picks</p></div>
-        <div className="pt-search"><Icon name="search" /><input placeholder="Search your listings" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="pt-search"><Icon name="search" /><input placeholder="Search your listings" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+          <button className="btn primary" disabled={locked && !adding} title={locked ? 'Available once an admin approves your shop' : undefined} onClick={() => setAdding(!adding)} style={{ whiteSpace: 'nowrap' }}>
+            <Icon name={adding ? 'x' : 'plus'} />{adding ? 'Cancel' : 'Upload product'}
+          </button>
+        </div>
       </div>
+      {adding && (
+        <NewProductCard
+          cats={cats}
+          tree={tree}
+          onCreated={(newP) => {
+            setProducts((list) => [newP, ...(list || [])]);
+            setAdding(false);
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      )}
       <section className="ws-card flush" style={{ padding: 0 }}>
         <table className="table inv">
           <thead><tr><th>Product</th><th>Status</th><th>Price</th><th>Available</th><th /></tr></thead>
           <tbody>
-            {shown.map((p) => <Row key={p.id} p={p} cats={cats} tree={tree} onSaved={saved} />)}
+            {shown.map((p) => <Row key={p.id} p={p} cats={cats} tree={tree} onSaved={saved} locked={locked} />)}
             {products && !shown.length && <tr><td colSpan="5" className="empty">No listings match.</td></tr>}
           </tbody>
         </table>
@@ -293,17 +591,14 @@ function ImagePick({ kind, url, onUploaded, disabled }) {
   );
 }
 
-function MyShop({ products, setProducts }) {
-  const [shop, setShop] = useState(undefined);
+function MyShop({ products, setProducts, shop, setShop, locked }) {
   const [form, setForm] = useState({ name: '', slug: '', about: '', returnPolicy: '' });
   const [errors, setErrors] = useState({});
   const [msg, setMsg] = useState(null);
+  const shopId = shop ? shop.sellerId : null;
   useEffect(() => {
-    api('/seller/shop').then(({ shop: sh }) => {
-      setShop(sh);
-      if (sh) setForm({ name: sh.name, slug: sh.slug, about: sh.about, returnPolicy: sh.returnPolicy });
-    }).catch((e) => setMsg({ err: e.message }));
-  }, []);
+    if (shop) setForm({ name: shop.name, slug: shop.slug, about: shop.about, returnPolicy: shop.returnPolicy });
+  }, [shopId]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k) => (e) => { setForm({ ...form, [k]: e.target.value }); setErrors({ ...errors, [k]: null }); };
   async function save(e) {
     e.preventDefault(); setMsg(null);
@@ -319,7 +614,7 @@ function MyShop({ products, setProducts }) {
     <>
       <div className="ws-head">
         <div><h1>My shop</h1><p>What customers see on your shop page.</p></div>
-        {shop && <Link className="bg-btn dark small" to={`/shop/${shop.slug}`}>View my shop page<Icon name="arrow" /></Link>}
+        {shop && shop.status === 'APPROVED' && <Link className="bg-btn dark small" to={`/shop/${shop.slug}`}>View my shop page<Icon name="arrow" /></Link>}
       </div>
       <form className="ws-card" onSubmit={save} noValidate>
         <h2>Shop details</h2>
@@ -349,7 +644,7 @@ function MyShop({ products, setProducts }) {
         <p className="muted">Click to choose which products show first on your shop page and in the homepage "Curated pieces" band.</p>
         <div className="featured-grid">
           {(products || []).filter((p) => p.status !== 'PENDING').map((p) => (
-            <button type="button" key={p.id} className={`feat ${p.featured ? 'on' : ''}`} onClick={() => toggleFeatured(p)} aria-pressed={p.featured}>
+            <button type="button" key={p.id} className={`feat ${p.featured ? 'on' : ''}`} disabled={locked} onClick={() => toggleFeatured(p)} aria-pressed={p.featured}>
               <span className="tick"><Icon name="check" /></span>
               <ProductArt image={p.image} imageUrl={p.imageUrl} label={p.name} />
               <b>{p.name}</b>
@@ -370,18 +665,24 @@ export default function SellerHome() {
   const [cats, setCats] = useState([]);
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
+  const [shop, setShop] = useState(undefined);            // undefined = loading, null = no shop yet
+  const [reapplyDays, setReapplyDays] = useState(7);
+  const locked = !!shop && shop.status !== 'APPROVED';    // the server enforces this too (403 SHOP_NOT_APPROVED)
 
   useEffect(() => {
+    api('/seller/shop').then((d) => { setShop(d.shop); if (d.reapplyDays !== undefined) setReapplyDays(d.reapplyDays); }).catch((e) => { setError(e.message); setShop(null); });
     api('/seller/products').then((d) => setProducts(d.products)).catch((e) => { setError(e.message); setProducts([]); });
     api('/catalog/categories', { auth: false }).then((d) => setCats(d.categories)).catch(() => {});
   }, []);
   useEffect(() => { if (tab === 'overview') api('/seller/stats').then(setStats).catch((e) => setError(e.message)); }, [tab, products]);
 
-  if (tab === 'orders') return <Soon icon="box" title="No orders yet" text="Orders for your products appear here once checkout is built (E2 order service)." />;
-  if (tab === 'payments') return <Soon icon="wallet" title="No payments yet" text="Settlements for your orders will be listed here after the payment service is built (E2)." />;
+  const gate = <ShopGate shop={shop} reapplyDays={reapplyDays} onShop={setShop} />;
+  if (tab === 'orders') return <>{gate}<Soon icon="box" title="No orders yet" text="Orders for your products appear here once checkout is built (E2 order service)." /></>;
+  if (tab === 'payments') return <>{gate}<Soon icon="wallet" title="No payments yet" text="Settlements for your orders will be listed here after the payment service is built (E2)." /></>;
 
   return (
     <>
+      {gate}
       {error && <div className="alert error"><Icon name="alert" />{error}</div>}
       {tab === 'overview' && (
         <>
@@ -392,8 +693,8 @@ export default function SellerHome() {
           {stats ? <Insights stats={stats} /> : <div className="ws-card muted">Loading your numbers…</div>}
         </>
       )}
-      {tab === 'inventory' && <Inventory products={products} setProducts={setProducts} cats={cats} me={me} />}
-      {tab === 'shop' && <MyShop products={products} setProducts={setProducts} />}
+      {tab === 'inventory' && <Inventory products={products} setProducts={setProducts} cats={cats} me={me} locked={locked} />}
+      {tab === 'shop' && <MyShop products={products} setProducts={setProducts} shop={shop} setShop={setShop} locked={locked} />}
     </>
   );
 }

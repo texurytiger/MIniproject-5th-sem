@@ -45,6 +45,63 @@ const users = {
     const [rows] = await pool.query('SELECT role_id AS roleId, COUNT(*) AS n FROM users GROUP BY role_id');
     return new Map(rows.map((r) => [r.roleId, r.n]));
   },
+  /** Rows that would block a hard delete (products have no ON DELETE on seller_id; orders will reference users too). */
+  async usage(id) {
+    const [[r]] = await pool.query(
+      `SELECT (SELECT COUNT(*) FROM products WHERE seller_id = ?) AS products,
+              (SELECT COUNT(*) FROM orders WHERE customer_id = ?) AS orders`, [id, id]);
+    return { products: Number(r.products), orders: Number(r.orders) };
+  },
+  /** Hard delete. The shop goes with it (ON DELETE CASCADE); audit_log rows stay (no foreign key, history is kept). */
+  remove: (id) => pool.query('DELETE FROM users WHERE id = ?', [id]),
+};
+
+/**
+ * Seller sign-up: the account and its shop are created in ONE transaction, so a failure never leaves
+ * an account without a shop (which would also block the email from being used again).
+ * The shop starts PENDING (column default) until an admin approves it.
+ */
+const sellers = {
+  async register({ name, email, passwordHash, roleId, shop }) {
+    const c = await pool.getConnection();
+    try {
+      await c.beginTransaction();
+      const [u] = await c.query('INSERT INTO users (name, email, password_hash, role_id) VALUES (?, ?, ?, ?)', [name, email, passwordHash, roleId]);
+      await c.query('INSERT INTO shops (seller_id, slug, name, about, return_policy) VALUES (?, ?, ?, ?, ?)',
+        [u.insertId, shop.slug, shop.name, shop.about, shop.returnPolicy]);
+      await c.commit();
+      return u.insertId;
+    } catch (e) { await c.rollback(); throw e; } finally { c.release(); }
+  },
+  /** Shops with their seller, for the admin approvals page. status = PENDING | APPROVED | REJECTED, or null for all. */
+  async list(status) {
+    const [rows] = await pool.query(
+      `SELECT sh.seller_id AS sellerId, u.name AS sellerName, u.email, u.is_active AS isActive,
+              sh.slug, sh.name, sh.about, sh.status, sh.review_note AS reviewNote, sh.reviewed_at AS reviewedAt,
+              rv.email AS reviewedBy, sh.applied_at AS appliedAt,
+              (SELECT COUNT(*) FROM products p WHERE p.seller_id = sh.seller_id) AS products
+         FROM shops sh JOIN users u ON u.id = sh.seller_id LEFT JOIN users rv ON rv.id = sh.reviewed_by
+        ${status ? 'WHERE sh.status = ?' : ''} ORDER BY sh.applied_at DESC, sh.seller_id DESC`, status ? [status] : []);
+    return rows.map((r) => ({ ...r, isActive: !!r.isActive, products: Number(r.products) }));
+  },
+  /** Approve or reject, only from PENDING (returns false if the shop was not pending: someone else got there first). */
+  async review(sellerId, status, note, adminId) {
+    const [r] = await pool.query(
+      "UPDATE shops SET status = ?, review_note = ?, reviewed_by = ?, reviewed_at = NOW() WHERE seller_id = ? AND status = 'PENDING'",
+      [status, note, adminId, sellerId]);
+    return r.affectedRows === 1;
+  },
+  /** REJECTED -> PENDING once the cooldown has passed (checked here too, so two quick clicks cannot skip it). */
+  async reapply(sellerId, cooldownDays) {
+    const [r] = await pool.query(
+      `UPDATE shops SET status = 'PENDING', review_note = '', applied_at = NOW()
+        WHERE seller_id = ? AND status = 'REJECTED' AND reviewed_at <= NOW() - INTERVAL ? DAY`, [sellerId, cooldownDays]);
+    return r.affectedRows === 1;
+  },
+  async countByStatus() {
+    const [rows] = await pool.query('SELECT status, COUNT(*) AS n FROM shops GROUP BY status');
+    return Object.fromEntries(['PENDING', 'APPROVED', 'REJECTED'].map((s) => [s, Number((rows.find((r) => r.status === s) || {}).n || 0)]));
+  },
 };
 
 const roles = {
@@ -106,7 +163,7 @@ const audit = {
   },
 };
 
-const productCols = `p.id, p.seller_id AS sellerId, s.name AS sellerName, sh.slug AS shopSlug, sh.name AS shopName,
+const productCols = `p.id, p.seller_id AS sellerId, s.name AS sellerName, sh.slug AS shopSlug, sh.name AS shopName, sh.status AS shopStatus,
   p.name, p.description, p.price, p.mrp, p.rating, p.reviews, p.stock, p.image, p.image_url AS imageUrl, p.featured, p.status,
   p.created_at AS createdAt,
   (SELECT GROUP_CONCAT(c.slug ORDER BY c.parent_id IS NOT NULL, c.id SEPARATOR ',') FROM product_categories pc
@@ -114,6 +171,8 @@ const productCols = `p.id, p.seller_id AS sellerId, s.name AS sellerName, sh.slu
   (SELECT GROUP_CONCAT(c.name ORDER BY c.parent_id IS NOT NULL, c.id SEPARATOR '|') FROM product_categories pc
      JOIN categories c ON c.id = pc.category_id WHERE pc.product_id = p.id) AS categoryNames`;
 const productFrom = 'FROM products p JOIN users s ON s.id = p.seller_id LEFT JOIN shops sh ON sh.seller_id = p.seller_id';
+/** Customers only see a product when it is APPROVED and its shop (if it has one) is approved too. */
+const SHOP_VISIBLE = "NOT EXISTS (SELECT 1 FROM shops vs WHERE vs.seller_id = p.seller_id AND vs.status <> 'APPROVED')";
 
 /** Turn the GROUP_CONCAT strings into arrays; keep `category`/`categoryName` (first one) for older pages. */
 function shapeProduct(r) {
@@ -140,7 +199,7 @@ const catalog = {
       `SELECT c.id, c.slug, c.name, c.parent_id AS parentId, COUNT(DISTINCT p.id) AS products
          FROM categories c
          LEFT JOIN product_categories pc ON pc.category_id = c.id
-         LEFT JOIN products p ON p.id = pc.product_id AND p.status = 'APPROVED'
+         LEFT JOIN products p ON p.id = pc.product_id AND p.status = 'APPROVED' AND ${SHOP_VISIBLE}
         GROUP BY c.id ORDER BY c.parent_id IS NOT NULL, c.name`);
     return rows;
   },
@@ -149,7 +208,7 @@ const catalog = {
    * q uses the FULLTEXT index, with a LIKE fallback.
    */
   async storefront({ categoryIds, q, limit, sort, minPrice, maxPrice, minRating }) {
-    const where = ["p.status = 'APPROVED'"]; const args = [];
+    const where = ["p.status = 'APPROVED'", SHOP_VISIBLE]; const args = [];
     if (categoryIds && categoryIds.length) {
       where.push('EXISTS (SELECT 1 FROM product_categories pc WHERE pc.product_id = p.id AND pc.category_id IN (?))');
       args.push(categoryIds);
@@ -169,7 +228,7 @@ const catalog = {
     return shapeAll(rows);
   },
   async priceRange() {
-    const [[r]] = await pool.query("SELECT MIN(price) AS min, MAX(price) AS max FROM products WHERE status = 'APPROVED'");
+    const [[r]] = await pool.query(`SELECT MIN(price) AS min, MAX(price) AS max FROM products p WHERE p.status = 'APPROVED' AND ${SHOP_VISIBLE}`);
     return { min: Number(r.min || 0), max: Number(r.max || 0) };
   },
   async byId(id) {
@@ -184,6 +243,11 @@ const catalog = {
     const [rows] = await pool.query(`SELECT ${productCols} ${productFrom} ORDER BY p.id`);
     return shapeAll(rows);
   },
+  /** Admin approvals page: listings waiting for approval, oldest first. */
+  async pending() {
+    const [rows] = await pool.query(`SELECT ${productCols} ${productFrom} WHERE p.status = 'PENDING' ORDER BY p.created_at, p.id`);
+    return shapeAll(rows);
+  },
   /** Price/stock edit. Stock 0 flips an APPROVED product to SOLD_OUT and back on restock. */
   async updatePriceStock(id, { price, stock }) {
     await pool.query(
@@ -192,6 +256,32 @@ const catalog = {
        WHERE id = ?`, [price, stock, stock, id]);
   },
   approve: (id) => pool.query("UPDATE products SET status = IF(stock = 0, 'SOLD_OUT', 'APPROVED') WHERE id = ? AND status = 'PENDING'", [id]),
+  /** Create a new catalog item with its categories in ONE transaction. */
+  async create({ sellerId, name, description, price, mrp, stock, image, imageUrl, categoryIds }) {
+    const c = await pool.getConnection();
+    try {
+      await c.beginTransaction();
+      const [res] = await c.query(
+        `INSERT INTO products (seller_id, name, description, price, mrp, stock, image, image_url, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED')`,
+        [sellerId, name, description || '', price, mrp != null ? mrp : price, stock || 0, image || 'book', imageUrl || null]
+      );
+      const productId = res.insertId;
+      if (categoryIds && categoryIds.length) {
+        await c.query(
+          'INSERT INTO product_categories (product_id, category_id) VALUES ?',
+          [categoryIds.map((cid) => [productId, cid])]
+        );
+      }
+      await c.commit();
+      return productId;
+    } catch (e) {
+      await c.rollback();
+      throw e;
+    } finally {
+      c.release();
+    }
+  },
   /** Replace a product's categories in ONE transaction (all or nothing). */
   async setCategories(productId, categoryIds) {
     const c = await pool.getConnection();
@@ -236,7 +326,7 @@ const categories = {
 
 /** One shop page per seller. */
 const shopCols = `seller_id AS sellerId, slug, name, about, return_policy AS returnPolicy, logo_url AS logoUrl,
-  banner_url AS bannerUrl, updated_at AS updatedAt`;
+  banner_url AS bannerUrl, status, review_note AS reviewNote, reviewed_at AS reviewedAt, applied_at AS appliedAt, updated_at AS updatedAt`;
 const shops = {
   async bySeller(sellerId) {
     const [rows] = await pool.query(`SELECT ${shopCols} FROM shops WHERE seller_id = ?`, [sellerId]);
@@ -272,8 +362,15 @@ const stats = {
       `SELECT reason, COUNT(*) AS n FROM audit_log WHERE decision = 'DENY' GROUP BY reason ORDER BY n DESC LIMIT ?`, [limit]);
     return rows.map((r) => ({ ...r, n: Number(r.n) }));
   },
+  /** Busiest IP addresses in the audit log over the last N days, most refusals first. */
+  async topIps(limit, days) {
+    const [rows] = await pool.query(
+      `SELECT ip, COUNT(*) AS total, SUM(decision = 'DENY') AS denied, COUNT(DISTINCT email) AS accounts, MAX(created_at) AS lastSeen
+         FROM audit_log WHERE ip IS NOT NULL AND created_at >= NOW() - INTERVAL ? DAY
+        GROUP BY ip ORDER BY denied DESC, total DESC LIMIT ?`, [days, limit]);
+    return rows.map((r) => ({ ...r, total: Number(r.total), denied: Number(r.denied), accounts: Number(r.accounts) }));
+  },
 };
-
 
 /** Orders and Warehouse fulfillment data access (Sprint 2). */
 const orders = {
@@ -389,7 +486,6 @@ const orders = {
   },
 };
 
-
 const fallback = require('./fallback');
 
 function safe(target, entityName) {
@@ -417,6 +513,7 @@ function safe(target, entityName) {
 
 module.exports = {
   users: safe(users, 'users'),
+  sellers: safe(sellers, 'sellers'),
   roles: safe(roles, 'roles'),
   permissions: safe(permissions, 'permissions'),
   audit: safe(audit, 'audit'),
@@ -427,4 +524,3 @@ module.exports = {
   orders: safe(orders, 'orders'),
   ping: () => pool.query('SELECT 1').catch(() => true),
 };
-

@@ -76,23 +76,31 @@ r.post('/register-seller', wrap(async (req, res) => {
 
   const roleId = cache.state.byName.get('SELLER') || 6;
   const passwordHash = await bcrypt.hash(password, config.bcryptCost);
-  const id = await data.users.create({ name, email, passwordHash, roleId });
-
+  // Account + shop in one transaction (E3). The shop starts PENDING: hidden from customers, products locked,
+  // until an admin approves it on /admin/approvals.
+  let id;
   try {
-    await data.shops.upsert(id, {
-      slug: rawSlug,
-      name: shopName,
-      about: `Welcome to ${shopName}. Browse our authentic items handcrafted with care.`,
-      returnPolicy: 'Returns accepted within 7 days of delivery in original packaging.'
+    id = await data.sellers.register({
+      name, email, passwordHash, roleId,
+      shop: {
+        slug: rawSlug,
+        name: shopName,
+        about: `Welcome to ${shopName}. Browse our authentic items handcrafted with care.`,
+        returnPolicy: 'Returns accepted within 7 days of delivery in original packaging.',
+      },
     });
   } catch (err) {
-    await data.users.setActive(id, false);
+    // Two sign-ups racing for the same email or web address: the UNIQUE keys catch it, nothing was saved.
+    if (err.code === 'ER_DUP_ENTRY') {
+      if (/email/i.test(err.message)) throw new HttpError(409, 'EMAIL_TAKEN', 'An account with this email already exists.', { email: 'is already registered' });
+      throw new HttpError(409, 'SLUG_TAKEN', 'Another shop already uses that web address.', { shopSlug: 'already taken' });
+    }
     throw err;
   }
 
   const user = await data.users.byId(id);
   await auditLogin(user, email, 'ALLOW', 'SELLER_REGISTERED', req.ip);
-  res.status(201).json({ user: publicUser(user), shop: { slug: rawSlug, name: shopName } });
+  res.status(201).json({ user: publicUser(user), shop: { slug: rawSlug, name: shopName, status: 'PENDING' } });
 }));
 
 /**

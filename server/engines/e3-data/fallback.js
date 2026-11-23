@@ -146,6 +146,14 @@ const fallback = {
     },
     recordLoginFailure() {},
     resetLoginFailures() {},
+    async usage() { return { products: 0, orders: 0 }; },
+    async remove() { return true; },
+  },
+  sellers: {
+    async list() { return []; },
+    async countByStatus() { return { PENDING: 0, APPROVED: 2, REJECTED: 0 }; },
+    async review() { return true; },
+    async reapply() { return true; },
   },
   catalog: {
     async all() { return PRODUCTS; },

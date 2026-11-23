@@ -56,6 +56,54 @@ r.put('/users/:id/active', guard('user', 'deactivate'), wrap(async (req, res) =>
   res.json({ user: await data.users.byId(id) });
 }));
 
+/**
+ * Permanent delete (user:delete). Ban = deactivate (above) and keeps the account; delete removes it.
+ * Refused for yourself, for ADMIN accounts, and for anyone who still owns products or orders
+ * (those rows must keep their owner: deactivate instead).
+ */
+r.delete('/users/:id', guard('user', 'delete'), wrap(async (req, res) => {
+  const id = toInt(req.params.id);
+  if (id === req.user.id) throw new HttpError(403, 'SELF_CHANGE', 'You cannot delete your own account.');
+  const user = await data.users.byId(id);
+  if (!user) throw new HttpError(404, 'NOT_FOUND', 'User not found.');
+  if (user.role === 'ADMIN') throw new HttpError(403, 'LOCKOUT', 'Admin accounts cannot be deleted here. Change the role first.');
+  const u = await data.users.usage(id);
+  if (u.products || u.orders) {
+    throw new HttpError(409, 'IN_USE', `This account still owns ${u.products} product(s) and ${u.orders} order(s). Deactivate it instead.`, u);
+  }
+  await data.users.remove(id);
+  res.status(204).end();
+}));
+
+/* ---------- seller approval (user:approve) ---------- */
+const SHOP_STATUSES = ['PENDING', 'APPROVED', 'REJECTED'];
+
+r.get('/sellers', guard('user', 'approve'), wrap(async (req, res) => {
+  const status = SHOP_STATUSES.includes(req.query.status) ? req.query.status : null;
+  const [sellers, counts] = await Promise.all([data.sellers.list(status), data.sellers.countByStatus()]);
+  res.json({ sellers, counts });
+}));
+
+async function reviewShop(req, status, note) {
+  const sellerId = toInt(req.params.id);
+  const shop = await data.shops.bySeller(sellerId);
+  if (!shop) throw new HttpError(404, 'NOT_FOUND', 'Shop not found.');
+  if (!(await data.sellers.review(sellerId, status, note, req.user.id))) {
+    throw new HttpError(409, 'NOT_PENDING', `This shop is ${shop.status}, not waiting for review.`);
+  }
+  return data.shops.bySeller(sellerId);
+}
+
+r.put('/sellers/:id/approve', guard('user', 'approve'), wrap(async (req, res) => {
+  res.json({ shop: await reviewShop(req, 'APPROVED', '') });
+}));
+
+r.put('/sellers/:id/reject', guard('user', 'approve'), wrap(async (req, res) => {
+  const reason = String(req.body.reason || '').trim();
+  validator().check(reason.length >= 3 && reason.length <= 300, 'reason', 'tell the seller why, in 3 to 300 characters').throwIfAny();
+  res.json({ shop: await reviewShop(req, 'REJECTED', reason) });
+}));
+
 /* ---------- roles & permissions ---------- */
 r.get('/roles', guard('role', 'manage'), (_req, res) => res.json({ roles: rolesView() }));
 r.get('/permissions', guard('role', 'manage'), wrap(async (_req, res) => res.json({ permissions: await data.permissions.all() })));
@@ -110,6 +158,11 @@ r.get('/audit', guard('audit', 'read'), wrap(async (req, res) => {
   const resource = /^[a-z_]{1,40}$/.test(req.query.resource || '') ? req.query.resource : null;
   const { entries, total } = await data.audit.page({ page, pageSize, decision, resource });
   res.json({ entries, total, page, pageSize });
+}));
+
+/** Busiest IP addresses (last 7 days), most refusals first: spots password guessing from one network. */
+r.get('/audit/ips', guard('audit', 'read'), wrap(async (_req, res) => {
+  res.json({ ips: await data.stats.topIps(10, 7), days: 7 });
 }));
 
 /* ---------- permission report (FR-12) ---------- */

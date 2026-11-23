@@ -464,3 +464,19 @@ h1, h2, h3, .sec-head h2, .shelf-head h2 { font-family: var(--display); }
 .bg-btn.outline-light:hover { border-color: var(--tan); color: var(--tan); }
 .sig-actions .bg-btn { padding: 14px 18px; font-size: 14px; letter-spacing: .03em; white-space: normal; line-height: 1.3; }
 .st-teams { margin: -4px 0 14px; font-size: 13px; color: var(--ink-2); }
+
+/* ---------- admin approvals + seller approval banner ---------- */
+.appr-row { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; padding: 14px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+.appr-main { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 260px; }
+.appr-title { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.appr-about { color: var(--ink-2); margin: 2px 0 0; max-width: 680px; }
+.appr-note { margin: 2px 0 0; color: var(--deny); }
+.appr-actions { justify-content: flex-end; }
+.ip-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.ip-card { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.ip-card code { font-size: 13px; font-weight: 600; }
+.ip-card.hot { border-color: #EBC6BA; background: var(--deny-soft); }
+.shop-gate { display: flex; gap: 12px; align-items: flex-start; border: 1px solid #E8D6AE; background: var(--warn-soft); padding: 14px 16px; margin-bottom: 16px; }
+.shop-gate.rejected { border-color: #EBC6BA; background: var(--deny-soft); }
+.shop-gate svg { width: 20px; height: 20px; flex: none; margin-top: 2px; }
+.shop-gate p { margin: 2px 0 0; font-size: 14px; color: var(--ink-2); }

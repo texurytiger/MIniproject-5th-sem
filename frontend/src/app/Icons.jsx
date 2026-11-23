@@ -32,6 +32,7 @@ const P = {
   menu: 'M4 6h16M4 12h16M4 18h16',
   return: 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
   edit: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4',
+  plus: 'M12 5v14M5 12h14',
 };
 export default function Icon({ name, ...rest }) {
   return (

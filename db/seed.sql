@@ -38,7 +38,10 @@ INSERT INTO permissions (resource, action, description) VALUES
  ('refund','approve','Approve or reject refunds'),
  ('report','read','Read financial reports'),
  ('category','manage','Create, rename, move and delete categories'),
- ('shop','update_own','Customise your own shop page');
+ ('shop','update_own','Customise your own shop page'),
+ -- added for seller approval (appended so existing permission ids do not move)
+ ('user','approve','Approve or reject seller shops'),
+ ('user','delete','Delete an account permanently');
 
 -- helper: grant by name
 INSERT INTO role_permissions (role_id, permission_id)
@@ -93,9 +96,10 @@ INSERT INTO product_categories (product_id, category_id) VALUES
  (5,4),(5,5), (6,4),(6,5), (7,4),(7,5), (8,4),(8,6), (9,4),(9,6),
  (10,7),(10,8), (11,7),(11,8),(11,9), (12,7),(12,9);
 
-INSERT INTO shops (seller_id, slug, name, about, return_policy, logo_url, banner_url) VALUES
- (3,'kavya-crafts','Kavya Crafts','Handpicked tech accessories and living-room pieces, chosen for warm materials and quiet design.','Returns accepted within 7 days of delivery in original packaging.',NULL,NULL),
- (4,'nilgiri-goods','Nilgiri Goods','Audio, ceramics and skincare from small makers across South India.','Unused items can be returned within 10 days. Skincare is non-returnable once opened.',NULL,NULL);
+-- The two demo shops are already approved by the admin (new shops start PENDING).
+INSERT INTO shops (seller_id, slug, name, about, return_policy, logo_url, banner_url, status, reviewed_by, reviewed_at) VALUES
+ (3,'kavya-crafts','Kavya Crafts','Handpicked tech accessories and living-room pieces, chosen for warm materials and quiet design.','Returns accepted within 7 days of delivery in original packaging.',NULL,NULL,'APPROVED',1,NOW()),
+ (4,'nilgiri-goods','Nilgiri Goods','Audio, ceramics and skincare from small makers across South India.','Unused items can be returned within 10 days. Skincare is non-returnable once opened.',NULL,NULL,'APPROVED',1,NOW());
 
 
 -- Initial seed orders for Warehouse & Fulfillment testing (Sprint 2)
