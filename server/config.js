@@ -67,6 +67,7 @@ const config = {
     deviceDays: int(env.TRUSTED_DEVICE_DAYS, 180),         // how long a device stays "known" after a successful sign-in
   },
   secureCookies: isProd || bool(env.SECURE_COOKIES),       // Secure flag = cookie only sent over HTTPS
+  shopReapplyDays: int(env.SHOP_REAPPLY_DAYS, 7),          // a rejected shop may apply again after this many days
 };
 
 /* Refuse to start in production with settings that would be unsafe on the internet. */
@@ -77,6 +78,7 @@ if (isProd) {
   if (!env.DB_PASSWORD) problems.push('DB_PASSWORD is empty.');
 }
 if (!(config.bcryptCost >= 10 && config.bcryptCost <= 14)) problems.push('BCRYPT_COST must be between 10 and 14.');
+if (!(config.shopReapplyDays >= 0 && config.shopReapplyDays <= 365)) problems.push('SHOP_REAPPLY_DAYS must be between 0 and 365.');
 if (problems.length) {
   console.error(`\nRefusing to start: unsafe configuration${isProd ? ' for production' : ''}:\n  - ${problems.join('\n  - ')}\nSee .env.example.\n`);
   process.exit(1);

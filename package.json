@@ -10,7 +10,7 @@
     "db:reset": "node server/resetDb.js",
     "test": "node --test tests/e1.test.js",
     "test:engines": "node --test tests/engines.test.js",
-    "test:all": "node --test --test-concurrency=1 tests/e1.test.js tests/engines.test.js tests/baguette.test.js",
+    "test:all": "node --test --test-concurrency=1 tests/e1.test.js tests/engines.test.js tests/baguette.test.js tests/approval.test.js",
     "trace:e1": "node scripts/e1-trace.js"
   },
   "dependencies": {

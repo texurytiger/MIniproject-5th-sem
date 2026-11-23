@@ -104,6 +104,9 @@ CREATE TABLE product_categories (
 );
 
 -- One shop page per seller (1 : 1 with users).
+-- Seller approval: a new shop starts PENDING (fail closed). Until an admin approves it, the shop and its
+-- products are hidden from customers and the seller cannot change products. REJECTED shops may reapply
+-- after a cooldown (SHOP_REAPPLY_DAYS, default 7) counted from reviewed_at.
 CREATE TABLE shops (
   seller_id     INT PRIMARY KEY,
   slug          VARCHAR(60)   NOT NULL UNIQUE,
@@ -112,8 +115,15 @@ CREATE TABLE shops (
   return_policy VARCHAR(1000) NOT NULL DEFAULT '',
   logo_url      VARCHAR(255)  NULL,
   banner_url    VARCHAR(255)  NULL,
+  status        ENUM('PENDING','APPROVED','REJECTED') NOT NULL DEFAULT 'PENDING',
+  review_note   VARCHAR(300)  NOT NULL DEFAULT '',     -- the admin's reason when rejecting
+  reviewed_by   INT NULL,                              -- the admin who approved or rejected
+  reviewed_at   DATETIME NULL,
+  applied_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,  -- first application, or the latest reapply
   updated_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_shop_seller FOREIGN KEY (seller_id) REFERENCES users(id) ON DELETE CASCADE
+  KEY ix_shop_status (status, applied_at),
+  CONSTRAINT fk_shop_seller   FOREIGN KEY (seller_id)   REFERENCES users(id) ON DELETE CASCADE,
+  CONSTRAINT fk_shop_reviewer FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
 

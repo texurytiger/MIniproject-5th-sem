@@ -40,6 +40,18 @@ export default function UsersPage() {
     }
   }
 
+  async function remove(user) {
+    if (!window.confirm(`Delete ${user.email} permanently? This cannot be undone. (To keep the account but block it, use Deactivate.)`)) return;
+    setMsg(null);
+    try {
+      await api(`/admin/users/${user.id}`, { method: 'DELETE' });
+      setUsers((list) => list.filter((u) => u.id !== user.id));
+      setMsg({ type: 'ok', text: `${user.email} was deleted.` });
+    } catch (err) {
+      setMsg({ type: 'error', text: `${err.status}: ${err.message}` });
+    }
+  }
+
   const shown = users.filter((u) => `${u.name} ${u.email} ${u.role}`.toLowerCase().includes(filter.toLowerCase()));
   return (
     <div className="stack">
@@ -59,6 +71,9 @@ export default function UsersPage() {
                   {u.locked && <span className="badge warn" style={{ marginLeft: 6 }}>locked 15 min</span>}
                   {can('user:deactivate') && u.id !== me.user.id && (
                     <button className="btn small ghost" style={{ marginLeft: 6 }} onClick={() => toggleActive(u)}>{u.isActive ? 'Deactivate' : 'Reactivate'}</button>
+                  )}
+                  {can('user:delete') && u.id !== me.user.id && u.role !== 'ADMIN' && (
+                    <button className="btn small ghost" onClick={() => remove(u)} title="Only accounts with no products or orders can be deleted">Delete</button>
                   )}
                 </td>
                 <td>

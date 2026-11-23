@@ -20,6 +20,37 @@ function Soon({ icon, title, text }) {
   return <div className="pt-empty ws-card"><Icon name={icon} /><h3>{title}</h3><p className="muted">{text}</p></div>;
 }
 
+/** Seller approval banner: shown on every tab until an admin approves the shop. */
+function ShopGate({ shop, reapplyDays, onShop }) {
+  const [state, setState] = useState(null);
+  if (!shop || shop.status === 'APPROVED') return null;
+  const rejected = shop.status === 'REJECTED';
+  const readyAt = shop.canReapplyAt ? new Date(shop.canReapplyAt) : null;
+  const ready = rejected && readyAt && readyAt <= new Date();
+  async function reapply() {
+    setState({ busy: true });
+    try { const { shop: sh } = await api('/seller/shop/reapply', { method: 'POST' }); onShop(sh); setState(null); } catch (e) { setState({ err: e.message }); }
+  }
+  return (
+    <div className={`shop-gate ${rejected ? 'rejected' : ''}`} role="status">
+      <Icon name={rejected ? 'alert' : 'clock'} />
+      <div style={{ flex: 1 }}>
+        <b>{rejected ? 'Your shop was not approved' : 'Your shop is waiting for admin approval'}</b>
+        {rejected ? (
+          <>
+            <p><b>Reason:</b> {shop.reviewNote}</p>
+            <p>Fix your shop details on <Link to="?tab=shop">My shop</Link>, then apply again. {ready ? 'You can apply again now.' : `You can apply again from ${readyAt ? readyAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'later'} (${reapplyDays} days after the decision).`}</p>
+          </>
+        ) : (
+          <p>You can set up your shop details, logo and banner now. Until an admin approves the shop, customers cannot see it and you cannot change products.</p>
+        )}
+        {state && state.err && <span className="inv-msg err">{state.err}</span>}
+      </div>
+      {rejected && <button className="btn small primary" disabled={!ready || (state && state.busy)} onClick={reapply}>Apply again</button>}
+    </div>
+  );
+}
+
 function Seg({ value, onChange }) {
   return <div className="seg">{PERIODS.map(([k, l]) => <button key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>{l}</button>)}</div>;
 }
@@ -152,7 +183,7 @@ function CategoryPicker({ tree, value, onChange }) {
   );
 }
 
-function Row({ p, cats, tree, onSaved }) {
+function Row({ p, cats, tree, onSaved, locked }) {
   const [price, setPrice] = useState(String(p.price));
   const [stock, setStock] = useState(String(p.stock));
   const [state, setState] = useState(null);
@@ -182,9 +213,9 @@ function Row({ p, cats, tree, onSaved }) {
         <td><input className="inv-qty" type="number" min="0" value={stock} onChange={(e) => setStock(e.target.value)} aria-label={`Stock of ${p.name}`} /></td>
         <td className="right">
           <div className="row-actions" style={{ justifyContent: 'flex-end' }}>
-            <button className={`btn small ${p.featured ? 'primary' : ''}`} onClick={feature} title="Show first on your shop page">{p.featured ? '★ Featured' : '☆ Feature'}</button>
-            <button className="btn small" onClick={() => setOpen(!open)} aria-expanded={open}>Categories</button>
-            <button className="btn small primary" disabled={!dirty || (state && state.busy)} onClick={save}>Save</button>
+            <button className={`btn small ${p.featured ? 'primary' : ''}`} disabled={locked} onClick={feature} title="Show first on your shop page">{p.featured ? '★ Featured' : '☆ Feature'}</button>
+            <button className="btn small" disabled={locked} onClick={() => setOpen(!open)} aria-expanded={open}>Categories</button>
+            <button className="btn small primary" disabled={locked || !dirty || (state && state.busy)} onClick={save}>Save</button>
           </div>
           {state && state.ok && <span className="inv-msg ok"><Icon name="check" />{state.ok}</span>}
           {state && state.err && <span className="inv-msg err">{state.err}</span>}
@@ -487,7 +518,7 @@ function NewProductCard({ cats, tree, onCreated, onCancel }) {
   );
 }
 
-function Inventory({ products, setProducts, cats, me }) {
+function Inventory({ products, setProducts, cats, me, locked }) {
   const [filter, setFilter] = useState('');
   const [adding, setAdding] = useState(false);
   const tree = useMemo(() => buildTree(cats), [cats]);
@@ -499,7 +530,7 @@ function Inventory({ products, setProducts, cats, me }) {
         <div><h1>Product inventory</h1><p>{products ? `${products.length} listing${products.length === 1 ? '' : 's'}` : 'loading…'} · prices, stock, categories and featured picks</p></div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div className="pt-search"><Icon name="search" /><input placeholder="Search your listings" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
-          <button className="btn primary" onClick={() => setAdding(!adding)} style={{ whiteSpace: 'nowrap' }}>
+          <button className="btn primary" disabled={locked && !adding} title={locked ? 'Available once an admin approves your shop' : undefined} onClick={() => setAdding(!adding)} style={{ whiteSpace: 'nowrap' }}>
             <Icon name={adding ? 'x' : 'plus'} />{adding ? 'Cancel' : 'Upload product'}
           </button>
         </div>
@@ -519,7 +550,7 @@ function Inventory({ products, setProducts, cats, me }) {
         <table className="table inv">
           <thead><tr><th>Product</th><th>Status</th><th>Price</th><th>Available</th><th /></tr></thead>
           <tbody>
-            {shown.map((p) => <Row key={p.id} p={p} cats={cats} tree={tree} onSaved={saved} />)}
+            {shown.map((p) => <Row key={p.id} p={p} cats={cats} tree={tree} onSaved={saved} locked={locked} />)}
             {products && !shown.length && <tr><td colSpan="5" className="empty">No listings match.</td></tr>}
           </tbody>
         </table>
@@ -560,17 +591,14 @@ function ImagePick({ kind, url, onUploaded, disabled }) {
   );
 }
 
-function MyShop({ products, setProducts }) {
-  const [shop, setShop] = useState(undefined);
+function MyShop({ products, setProducts, shop, setShop, locked }) {
   const [form, setForm] = useState({ name: '', slug: '', about: '', returnPolicy: '' });
   const [errors, setErrors] = useState({});
   const [msg, setMsg] = useState(null);
+  const shopId = shop ? shop.sellerId : null;
   useEffect(() => {
-    api('/seller/shop').then(({ shop: sh }) => {
-      setShop(sh);
-      if (sh) setForm({ name: sh.name, slug: sh.slug, about: sh.about, returnPolicy: sh.returnPolicy });
-    }).catch((e) => setMsg({ err: e.message }));
-  }, []);
+    if (shop) setForm({ name: shop.name, slug: shop.slug, about: shop.about, returnPolicy: shop.returnPolicy });
+  }, [shopId]); // eslint-disable-line react-hooks/exhaustive-deps
   const set = (k) => (e) => { setForm({ ...form, [k]: e.target.value }); setErrors({ ...errors, [k]: null }); };
   async function save(e) {
     e.preventDefault(); setMsg(null);
@@ -586,7 +614,7 @@ function MyShop({ products, setProducts }) {
     <>
       <div className="ws-head">
         <div><h1>My shop</h1><p>What customers see on your shop page.</p></div>
-        {shop && <Link className="bg-btn dark small" to={`/shop/${shop.slug}`}>View my shop page<Icon name="arrow" /></Link>}
+        {shop && shop.status === 'APPROVED' && <Link className="bg-btn dark small" to={`/shop/${shop.slug}`}>View my shop page<Icon name="arrow" /></Link>}
       </div>
       <form className="ws-card" onSubmit={save} noValidate>
         <h2>Shop details</h2>
@@ -616,7 +644,7 @@ function MyShop({ products, setProducts }) {
         <p className="muted">Click to choose which products show first on your shop page and in the homepage "Curated pieces" band.</p>
         <div className="featured-grid">
           {(products || []).filter((p) => p.status !== 'PENDING').map((p) => (
-            <button type="button" key={p.id} className={`feat ${p.featured ? 'on' : ''}`} onClick={() => toggleFeatured(p)} aria-pressed={p.featured}>
+            <button type="button" key={p.id} className={`feat ${p.featured ? 'on' : ''}`} disabled={locked} onClick={() => toggleFeatured(p)} aria-pressed={p.featured}>
               <span className="tick"><Icon name="check" /></span>
               <ProductArt image={p.image} imageUrl={p.imageUrl} label={p.name} />
               <b>{p.name}</b>
@@ -637,18 +665,24 @@ export default function SellerHome() {
   const [cats, setCats] = useState([]);
   const [stats, setStats] = useState(null);
   const [error, setError] = useState('');
+  const [shop, setShop] = useState(undefined);            // undefined = loading, null = no shop yet
+  const [reapplyDays, setReapplyDays] = useState(7);
+  const locked = !!shop && shop.status !== 'APPROVED';    // the server enforces this too (403 SHOP_NOT_APPROVED)
 
   useEffect(() => {
+    api('/seller/shop').then((d) => { setShop(d.shop); if (d.reapplyDays !== undefined) setReapplyDays(d.reapplyDays); }).catch((e) => { setError(e.message); setShop(null); });
     api('/seller/products').then((d) => setProducts(d.products)).catch((e) => { setError(e.message); setProducts([]); });
     api('/catalog/categories', { auth: false }).then((d) => setCats(d.categories)).catch(() => {});
   }, []);
   useEffect(() => { if (tab === 'overview') api('/seller/stats').then(setStats).catch((e) => setError(e.message)); }, [tab, products]);
 
-  if (tab === 'orders') return <Soon icon="box" title="No orders yet" text="Orders for your products appear here once checkout is built (E2 order service)." />;
-  if (tab === 'payments') return <Soon icon="wallet" title="No payments yet" text="Settlements for your orders will be listed here after the payment service is built (E2)." />;
+  const gate = <ShopGate shop={shop} reapplyDays={reapplyDays} onShop={setShop} />;
+  if (tab === 'orders') return <>{gate}<Soon icon="box" title="No orders yet" text="Orders for your products appear here once checkout is built (E2 order service)." /></>;
+  if (tab === 'payments') return <>{gate}<Soon icon="wallet" title="No payments yet" text="Settlements for your orders will be listed here after the payment service is built (E2)." /></>;
 
   return (
     <>
+      {gate}
       {error && <div className="alert error"><Icon name="alert" />{error}</div>}
       {tab === 'overview' && (
         <>
@@ -659,8 +693,8 @@ export default function SellerHome() {
           {stats ? <Insights stats={stats} /> : <div className="ws-card muted">Loading your numbers…</div>}
         </>
       )}
-      {tab === 'inventory' && <Inventory products={products} setProducts={setProducts} cats={cats} me={me} />}
-      {tab === 'shop' && <MyShop products={products} setProducts={setProducts} />}
+      {tab === 'inventory' && <Inventory products={products} setProducts={setProducts} cats={cats} me={me} locked={locked} />}
+      {tab === 'shop' && <MyShop products={products} setProducts={setProducts} shop={shop} setShop={setShop} locked={locked} />}
     </>
   );
 }

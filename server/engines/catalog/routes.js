@@ -9,6 +9,7 @@ const path = require('path');
 const data = require('../e3-data');
 const { guard, requireUser } = require('../e1-access/session');
 const typo = require('../e1-search/typo');
+const config = require('../../config');
 const { HttpError, wrap, validator, toInt } = require('../../core/http');
 
 const r = express.Router();
@@ -24,6 +25,28 @@ const ownerOfProduct = async (req) => {
   return p.sellerId;
 };
 const self = (req) => req.user.id;                              // "my own" resources (the shop) belong to the caller
+
+/**
+ * Seller approval: a SELLER may change products only once an admin has approved their shop.
+ * Runs AFTER guard(), so the permission check and its audit row still happen first.
+ * Other roles (admin, warehouse) are not sellers and are not affected.
+ */
+const requireApprovedShop = wrap(async (req, _res, next) => {
+  if (req.user.role !== 'SELLER') return next();
+  const shop = await data.shops.bySeller(req.user.id);
+  if (!shop || shop.status !== 'APPROVED') {
+    throw new HttpError(403, 'SHOP_NOT_APPROVED', shop && shop.status === 'REJECTED'
+      ? 'Your shop was not approved, so products are locked. See My shop for the reason and when you can apply again.'
+      : 'Your shop is waiting for admin approval. You can change products once it is approved.');
+  }
+  return next();
+});
+const shopVisible = (shopStatus) => !shopStatus || shopStatus === 'APPROVED';
+const daysToMs = (d) => d * 24 * 60 * 60 * 1000;
+/** Adds canReapplyAt to a REJECTED shop so the seller page can show when the button unlocks. */
+const withReapply = (shop) => (shop && shop.status === 'REJECTED' && shop.reviewedAt
+  ? { ...shop, canReapplyAt: new Date(new Date(shop.reviewedAt).getTime() + daysToMs(config.shopReapplyDays)) }
+  : shop);
 
 /** Category tree helpers: children map, all ids under a category (iterative DFS), loop check before a parent change. */
 function childrenMap(cats) {
@@ -89,14 +112,15 @@ r.get('/catalog/products', wrap(async (req, res) => {
 
 r.get('/catalog/products/:id', wrap(async (req, res) => {
   const p = await data.catalog.byId(toInt(req.params.id));
-  if (!p || p.status === 'PENDING') throw new HttpError(404, 'NOT_FOUND', 'Product not found.');
+  if (!p || p.status === 'PENDING' || !shopVisible(p.shopStatus)) throw new HttpError(404, 'NOT_FOUND', 'Product not found.');
   res.json({ product: p });
 }));
 
-/** Public shop page: the shop's details and its visible products, featured first. */
+/** Public shop page: the shop's details and its visible products, featured first. Unapproved shops do not exist publicly. */
 r.get('/shops/:slug', wrap(async (req, res) => {
-  const shop = SLUG.test(req.params.slug) ? await data.shops.bySlug(req.params.slug) : null;
-  if (!shop) throw new HttpError(404, 'NOT_FOUND', 'Shop not found.');
+  const found = SLUG.test(req.params.slug) ? await data.shops.bySlug(req.params.slug) : null;
+  if (!found || found.status !== 'APPROVED') throw new HttpError(404, 'NOT_FOUND', 'Shop not found.');
+  const { status, reviewNote, reviewedAt, appliedAt, ...shop } = found;    // review details are for the seller and admin only
   const products = (await data.catalog.bySeller(shop.sellerId)).filter((p) => p.status !== 'PENDING')
     .sort((a, b) => Number(b.featured) - Number(a.featured) || a.id - b.id);
   res.json({ shop, products });
@@ -108,7 +132,7 @@ r.get('/seller/products', requireUser, guard('product', 'create'), wrap(async (r
 }));
 
 /** Upload product photo (PNG, JPG, WebP up to 5 MB). */
-r.post('/seller/products/upload-image', requireUser, guard('product', 'create'),
+r.post('/seller/products/upload-image', requireUser, guard('product', 'create'), requireApprovedShop,
   express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '5mb' }),
   wrap(async (req, res) => {
     const buf = Buffer.isBuffer(req.body) ? req.body : null;
@@ -121,7 +145,7 @@ r.post('/seller/products/upload-image', requireUser, guard('product', 'create'),
   }));
 
 /** Create/upload a new product with categories and photo. */
-r.post('/seller/products', requireUser, guard('product', 'create'), wrap(async (req, res) => {
+r.post('/seller/products', requireUser, guard('product', 'create'), requireApprovedShop, wrap(async (req, res) => {
   const name = String(req.body.name || '').trim();
   const description = String(req.body.description || '').trim();
   const price = Number(req.body.price);
@@ -159,7 +183,7 @@ r.post('/seller/products', requireUser, guard('product', 'create'), wrap(async (
 }));
 
 /** FR-10: a seller holds product:update_own only, so this passes for their own rows and is 403 NOT_OWNER otherwise. */
-r.patch('/catalog/products/:id', requireUser, guard('product', 'update', ownerOfProduct), wrap(async (req, res) => {
+r.patch('/catalog/products/:id', requireUser, guard('product', 'update', ownerOfProduct), requireApprovedShop, wrap(async (req, res) => {
   const price = req.body.price === undefined ? null : Number(req.body.price);
   const stock = req.body.stock === undefined ? null : toInt(req.body.stock);
   validator()
@@ -171,7 +195,7 @@ r.patch('/catalog/products/:id', requireUser, guard('product', 'update', ownerOf
 }));
 
 /** Put a product in one or more categories (all replaced in one transaction). Own products only. */
-r.put('/seller/products/:id/categories', requireUser, guard('product', 'update', ownerOfProduct), wrap(async (req, res) => {
+r.put('/seller/products/:id/categories', requireUser, guard('product', 'update', ownerOfProduct), requireApprovedShop, wrap(async (req, res) => {
   const ids = Array.isArray(req.body.categoryIds) ? [...new Set(req.body.categoryIds.map(toInt))] : null;
   const known = new Set((await data.categories.all()).map((c) => c.id));
   validator()
@@ -183,7 +207,7 @@ r.put('/seller/products/:id/categories', requireUser, guard('product', 'update',
 }));
 
 /** Featured products show first on the seller's shop page. */
-r.put('/seller/products/:id/featured', requireUser, guard('product', 'update', ownerOfProduct), wrap(async (req, res) => {
+r.put('/seller/products/:id/featured', requireUser, guard('product', 'update', ownerOfProduct), requireApprovedShop, wrap(async (req, res) => {
   validator().check(typeof req.body.featured === 'boolean', 'featured', 'must be true or false').throwIfAny();
   await data.catalog.setFeatured(req.product.id, req.body.featured);
   res.json({ product: await data.catalog.byId(req.product.id) });
@@ -191,7 +215,18 @@ r.put('/seller/products/:id/featured', requireUser, guard('product', 'update', o
 
 /** The seller's own shop settings. shop:update_own -> GRANTED_OWN because the owner is the caller. */
 r.get('/seller/shop', requireUser, guard('shop', 'update', self), wrap(async (req, res) => {
-  res.json({ shop: await data.shops.bySeller(req.user.id) });
+  res.json({ shop: withReapply(await data.shops.bySeller(req.user.id)), reapplyDays: config.shopReapplyDays });
+}));
+
+/** A REJECTED shop applies again once the cooldown has passed. Shop details can be fixed first with PUT /seller/shop. */
+r.post('/seller/shop/reapply', requireUser, guard('shop', 'update', self), wrap(async (req, res) => {
+  const shop = withReapply(await data.shops.bySeller(req.user.id));
+  if (!shop) throw new HttpError(404, 'NOT_FOUND', 'You do not have a shop yet.');
+  if (shop.status !== 'REJECTED') throw new HttpError(409, 'NOT_REJECTED', `Your shop is ${shop.status}: only a rejected shop can apply again.`);
+  if (!(await data.sellers.reapply(req.user.id, config.shopReapplyDays))) {
+    throw new HttpError(409, 'TOO_SOON', `You can apply again from ${new Date(shop.canReapplyAt).toDateString()}.`, { canReapplyAt: shop.canReapplyAt });
+  }
+  res.json({ shop: withReapply(await data.shops.bySeller(req.user.id)) });
 }));
 
 r.put('/seller/shop', requireUser, guard('shop', 'update', self), wrap(async (req, res) => {
@@ -207,7 +242,7 @@ r.put('/seller/shop', requireUser, guard('shop', 'update', self), wrap(async (re
     .throwIfAny();
   if (await data.shops.slugTaken(slug, req.user.id)) throw new HttpError(409, 'SLUG_TAKEN', 'Another shop already uses that web address.', { slug: 'already taken' });
   await data.shops.upsert(req.user.id, { slug, name, about, returnPolicy });
-  res.json({ shop: await data.shops.bySeller(req.user.id) });
+  res.json({ shop: withReapply(await data.shops.bySeller(req.user.id)) });
 }));
 
 /**
@@ -267,9 +302,20 @@ r.patch('/ops/stock/:id', requireUser, guard('stock', 'update'), wrap(async (req
   res.json({ product: await data.catalog.byId(id) });
 }));
 
+/** Listings waiting for approval (admin approvals page). */
+r.get('/admin/products', requireUser, guard('product', 'approve'), wrap(async (_req, res) => {
+  res.json({ products: await data.catalog.pending() });
+}));
+
+/** Approve a PENDING listing. Refused while the seller's own shop is not approved (customers could not see it anyway). */
 r.put('/catalog/products/:id/approve', requireUser, guard('product', 'approve'), wrap(async (req, res) => {
-  await data.catalog.approve(toInt(req.params.id));
-  res.json({ product: await data.catalog.byId(toInt(req.params.id)) });
+  const id = toInt(req.params.id);
+  const p = await data.catalog.byId(id);
+  if (!p) throw new HttpError(404, 'NOT_FOUND', 'Product not found.');
+  if (p.status !== 'PENDING') throw new HttpError(409, 'NOT_PENDING', `This listing is already ${p.status}.`);
+  if (!shopVisible(p.shopStatus)) throw new HttpError(409, 'SHOP_NOT_APPROVED', `Approve the shop "${p.shopName}" first.`);
+  await data.catalog.approve(id);
+  res.json({ product: await data.catalog.byId(id) });
 }));
 
 /** Admin category manager (category:manage). */
@@ -326,11 +372,11 @@ r.delete('/admin/categories/:id', requireUser, guard('category', 'manage'), wrap
 
 /** Admin overview: real numbers only. Orders/revenue say so plainly until E2 exists. */
 r.get('/admin/overview', requireUser, guard('role', 'manage'), wrap(async (_req, res) => {
-  const [counts, roleRows, statusCounts, lowStock, cats, decisions, denials] = await Promise.all([
+  const [counts, roleRows, statusCounts, lowStock, cats, decisions, denials, shopCounts] = await Promise.all([
     data.users.countByRole(), data.roles.all(), data.catalog.statusCounts(), data.catalog.lowStockCount(LOW_STOCK), data.categories.all(),
-    data.stats.decisionsByDay(7), data.stats.topDenials(5)]);
+    data.stats.decisionsByDay(7), data.stats.topDenials(5), data.sellers.countByStatus()]);
   res.json({
-    usersByRole: roleRows.map((x) => ({ name: x.name, n: Number(counts.get(x.id) || 0) })), statusCounts, lowStock, lowStockThreshold: LOW_STOCK, categories: cats.length,
+    usersByRole: roleRows.map((x) => ({ name: x.name, n: Number(counts.get(x.id) || 0) })), statusCounts, shopCounts, lowStock, lowStockThreshold: LOW_STOCK, categories: cats.length,
     decisionsByDay: decisions, topDenials: denials, orders: SALES_PENDING,
   });
 }));

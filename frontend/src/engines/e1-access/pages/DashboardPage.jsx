@@ -34,8 +34,10 @@ export default function DashboardPage() {
   const labels = periodLabels('month');
   const allowed = days.reduce((t, x) => t + x.a, 0);
   const refused = days.reduce((t, x) => t + x.b, 0);
+  const shopsWaiting = (d.shopCounts && d.shopCounts.PENDING) || 0;
   const todo = [
-    s.PENDING ? { key: 'pending', tone: 'info', title: `${s.PENDING} listing${s.PENDING === 1 ? '' : 's'} awaiting approval`, text: 'Customers cannot see these until they are approved.' } : null,
+    shopsWaiting ? { key: 'shops', tone: 'info', title: `${shopsWaiting} seller shop${shopsWaiting === 1 ? '' : 's'} waiting for approval`, text: 'New sellers cannot change products, and customers cannot see their shop, until you approve it.', to: '/admin/approvals', action: 'Review' } : null,
+    s.PENDING ? { key: 'pending', tone: 'info', title: `${s.PENDING} listing${s.PENDING === 1 ? '' : 's'} awaiting approval`, text: 'Customers cannot see these until they are approved.', to: '/admin/approvals', action: 'Review' } : null,
     d.lowStock ? { key: 'low', tone: 'warn', title: `${d.lowStock} product${d.lowStock === 1 ? '' : 's'} low on stock`, text: `${d.lowStockThreshold} or fewer units left across all shops.` } : null,
     s.SOLD_OUT ? { key: 'out', tone: 'bad', title: `${s.SOLD_OUT} product${s.SOLD_OUT === 1 ? '' : 's'} sold out`, text: 'Hidden from search until the seller restocks.' } : null,
     refused ? { key: 'deny', tone: 'warn', title: `${refused} refused request${refused === 1 ? '' : 's'} this week`, text: 'Worth a look if one account keeps getting refused.', to: '/admin/audit', action: 'Audit log' } : null,
