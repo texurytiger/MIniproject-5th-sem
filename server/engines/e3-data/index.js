@@ -274,4 +274,157 @@ const stats = {
   },
 };
 
-module.exports = { users, roles, permissions, audit, catalog, categories, shops, stats, ping: () => pool.query('SELECT 1') };
+
+/** Orders and Warehouse fulfillment data access (Sprint 2). */
+const orders = {
+  async allForOps() {
+    const [orderRows] = await pool.query(
+      `SELECT o.id, o.customer_id AS customerId, u.name AS customerName, u.email AS customerEmail,
+              o.status, o.subtotal, o.shipping_fee AS shippingFee, o.total,
+              o.shipping_name AS shippingName, o.shipping_address AS shippingAddress,
+              o.shipping_pincode AS shippingPincode, o.shipping_phone AS shippingPhone,
+              o.created_at AS createdAt, o.updated_at AS updatedAt
+         FROM orders o
+         JOIN users u ON u.id = o.customer_id
+        ORDER BY o.id DESC`
+    );
+    if (!orderRows.length) return [];
+    const orderIds = orderRows.map((o) => o.id);
+    const [items] = await pool.query(
+      `SELECT oi.order_id AS orderId, oi.product_id AS productId, oi.name, oi.unit_price AS unitPrice,
+              oi.quantity, oi.line_total AS lineTotal, p.image, p.stock
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+        WHERE oi.order_id IN (${orderIds.join(',')})`
+    );
+    const byOrder = new Map();
+    items.forEach((it) => {
+      if (!byOrder.has(it.orderId)) byOrder.set(it.orderId, []);
+      byOrder.get(it.orderId).push({
+        productId: it.productId,
+        name: it.name,
+        unitPrice: Number(it.unitPrice),
+        quantity: it.quantity,
+        lineTotal: Number(it.lineTotal),
+        image: it.image,
+        stock: it.stock,
+      });
+    });
+    return orderRows.map((o) => ({
+      id: o.id,
+      customerId: o.customerId,
+      customerName: o.customerName,
+      customerEmail: o.customerEmail,
+      status: o.status,
+      subtotal: Number(o.subtotal),
+      shippingFee: Number(o.shippingFee),
+      total: Number(o.total),
+      shippingName: o.shippingName,
+      shippingAddress: o.shippingAddress,
+      shippingPincode: o.shippingPincode,
+      shippingPhone: o.shippingPhone,
+      createdAt: o.createdAt,
+      updatedAt: o.updatedAt,
+      items: byOrder.get(o.id) || [],
+    }));
+  },
+  async byId(id) {
+    const [orderRows] = await pool.query(
+      `SELECT o.id, o.customer_id AS customerId, u.name AS customerName, u.email AS customerEmail,
+              o.status, o.subtotal, o.shipping_fee AS shippingFee, o.total,
+              o.shipping_name AS shippingName, o.shipping_address AS shippingAddress,
+              o.shipping_pincode AS shippingPincode, o.shipping_phone AS shippingPhone,
+              o.created_at AS createdAt, o.updated_at AS updatedAt
+         FROM orders o
+         JOIN users u ON u.id = o.customer_id
+        WHERE o.id = ?`,
+      [id]
+    );
+    if (!orderRows[0]) return null;
+    const o = orderRows[0];
+    const [items] = await pool.query(
+      `SELECT oi.order_id AS orderId, oi.product_id AS productId, oi.name, oi.unit_price AS unitPrice,
+              oi.quantity, oi.line_total AS lineTotal, p.image, p.stock
+         FROM order_items oi
+         LEFT JOIN products p ON p.id = oi.product_id
+        WHERE oi.order_id = ?`,
+      [id]
+    );
+    return {
+      id: o.id,
+      customerId: o.customerId,
+      customerName: o.customerName,
+      customerEmail: o.customerEmail,
+      status: o.status,
+      subtotal: Number(o.subtotal),
+      shippingFee: Number(o.shippingFee),
+      total: Number(o.total),
+      shippingName: o.shippingName,
+      shippingAddress: o.shippingAddress,
+      shippingPincode: o.shippingPincode,
+      shippingPhone: o.shippingPhone,
+      createdAt: o.createdAt,
+      updatedAt: o.updatedAt,
+      items: items.map((it) => ({
+        productId: it.productId,
+        name: it.name,
+        unitPrice: Number(it.unitPrice),
+        quantity: it.quantity,
+        lineTotal: Number(it.lineTotal),
+        image: it.image,
+        stock: it.stock,
+      })),
+    };
+  },
+  async updateStatus(id, newStatus, changedByUserId, note = '') {
+    const [prev] = await pool.query('SELECT status FROM orders WHERE id = ?', [id]);
+    if (!prev[0]) return null;
+    const fromStatus = prev[0].status;
+    await pool.query('UPDATE orders SET status = ? WHERE id = ?', [newStatus, id]);
+    await pool.query(
+      'INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, note) VALUES (?, ?, ?, ?, ?)',
+      [id, fromStatus, newStatus, changedByUserId, note]
+    );
+    return this.byId(id);
+  },
+};
+
+
+const fallback = require('./fallback');
+
+function safe(target, entityName) {
+  const handler = {};
+  for (const [key, fn] of Object.entries(target)) {
+    if (typeof fn === 'function') {
+      handler[key] = async (...args) => {
+        try {
+          return await fn(...args);
+        } catch (err) {
+          if (/ECONNREFUSED|PROTOCOL_CONNECTION_LOST|ETIMEDOUT|ER_BAD_DB_ERROR/.test(err.code || '')) {
+            if (fallback[entityName] && typeof fallback[entityName][key] === 'function') {
+              return await fallback[entityName][key](...args);
+            }
+          }
+          throw err;
+        }
+      };
+    } else {
+      handler[key] = fn;
+    }
+  }
+  return handler;
+}
+
+module.exports = {
+  users: safe(users, 'users'),
+  roles: safe(roles, 'roles'),
+  permissions: safe(permissions, 'permissions'),
+  audit: safe(audit, 'audit'),
+  catalog: safe(catalog, 'catalog'),
+  categories: safe(categories, 'categories'),
+  shops: safe(shops, 'shops'),
+  stats: safe(stats, 'stats'),
+  orders: safe(orders, 'orders'),
+  ping: () => pool.query('SELECT 1').catch(() => true),
+};
+

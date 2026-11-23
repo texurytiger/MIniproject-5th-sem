@@ -216,6 +216,38 @@ r.patch('/ops/stock/:id', requireUser, guard('stock', 'update'), wrap(async (req
   res.json({ product: await data.catalog.byId(id) });
 }));
 
+/** Warehouse orders & fulfillment queue (UC-06, UC-16, order:read, order:update_status). */
+r.post('/ops/orders/reset', requireUser, guard('order', 'update_status'), wrap(async (_req, res) => {
+  if (data.orders.reset) await data.orders.reset();
+  const orders = await data.orders.allForOps();
+  res.json({ ok: true, orders });
+}));
+
+r.get('/ops/orders', requireUser, guard('order', 'read'), wrap(async (_req, res) => {
+  const orders = await data.orders.allForOps();
+  res.json({ orders });
+}));
+
+r.patch('/ops/orders/:id/status', requireUser, guard('order', 'update_status'), wrap(async (req, res) => {
+  const id = toInt(req.params.id);
+  const status = String(req.body.status || '').trim().toUpperCase();
+  const note = String(req.body.note || '').trim();
+  const allowed = ['PAID', 'PACKED', 'SHIPPED', 'DELIVERED', 'CANCELLED'];
+  validator().check(allowed.includes(status), 'status', `Status must be one of: ${allowed.join(', ')}`).throwIfAny();
+  const updated = await data.orders.updateStatus(id, status, req.user.id, note);
+  if (!updated) throw new HttpError(404, 'NOT_FOUND', 'Order not found.');
+  res.json({ ok: true, order: updated });
+}));
+
+r.post('/ops/orders/:id/issue', requireUser, guard('order', 'update_status'), wrap(async (req, res) => {
+  const id = toInt(req.params.id);
+  const reason = String(req.body.reason || 'Fulfillment exception').trim();
+  const note = String(req.body.note || '').trim();
+  const updated = await data.orders.updateStatus(id, 'CANCELLED', req.user.id, `Fulfillment Failure (UC-08): ${reason}. ${note}`);
+  if (!updated) throw new HttpError(404, 'NOT_FOUND', 'Order not found.');
+  res.json({ ok: true, order: updated });
+}));
+
 r.put('/catalog/products/:id/approve', requireUser, guard('product', 'approve'), wrap(async (req, res) => {
   await data.catalog.approve(toInt(req.params.id));
   res.json({ product: await data.catalog.byId(toInt(req.params.id)) });

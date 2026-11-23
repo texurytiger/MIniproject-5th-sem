@@ -96,3 +96,35 @@ INSERT INTO product_categories (product_id, category_id) VALUES
 INSERT INTO shops (seller_id, slug, name, about, return_policy, logo_url, banner_url) VALUES
  (3,'kavya-crafts','Kavya Crafts','Handpicked tech accessories and living-room pieces, chosen for warm materials and quiet design.','Returns accepted within 7 days of delivery in original packaging.',NULL,NULL),
  (4,'nilgiri-goods','Nilgiri Goods','Audio, ceramics and skincare from small makers across South India.','Unused items can be returned within 10 days. Skincare is non-returnable once opened.',NULL,NULL);
+
+
+-- Initial seed orders for Warehouse & Fulfillment testing (Sprint 2)
+INSERT INTO orders (id, customer_id, status, subtotal, shipping_fee, total, shipping_name, shipping_address, shipping_pincode, shipping_phone) VALUES
+ (1, 2, 'PAID', 59000.00, 0.00, 59000.00, 'Arjun Mehta', 'Flat 402, Royal Palms, 12th Main, Indiranagar, Bengaluru', '560038', '9876543210'),
+ (2, 2, 'PAID', 14000.00, 150.00, 14150.00, 'Arjun Mehta', 'Villa 12, Palm Meadows, Whitefield, Bengaluru', '560066', '9876543210'),
+ (3, 2, 'PACKED', 4000.00, 100.00, 4100.00, 'Pooja Sharma', 'Plot 88, Road No. 36, Jubilee Hills, Hyderabad', '500033', '9812345678'),
+ (4, 2, 'SHIPPED', 55000.00, 0.00, 55000.00, 'Rohan Verma', 'Sector 14, DLF Phase 2, Gurugram, Haryana', '122002', '9988776655'),
+ (5, 2, 'PAID', 110000.00, 0.00, 110000.00, 'Neha Kapoor', 'B-104, Sea Mist Apts, Bandra West, Mumbai', '400050', '9820011223');
+
+INSERT INTO order_items (order_id, product_id, seller_id, name, unit_price, quantity, line_total) VALUES
+ (1, 1, 3, 'Jacquard Case', 4000.00, 1, 4000.00),
+ (1, 2, 3, 'ANC Zony XM5', 55000.00, 1, 55000.00),
+ (2, 3, 4, 'True Wireless Bud', 7000.00, 2, 14000.00),
+ (3, 1, 3, 'Jacquard Case', 4000.00, 1, 4000.00),
+ (4, 2, 3, 'ANC Zony XM5', 55000.00, 1, 55000.00),
+ (5, 6, 4, 'Borivili Chase', 55000.00, 2, 110000.00);
+
+INSERT INTO order_status_history (order_id, from_status, to_status, changed_by, note) VALUES
+ (1, NULL, 'PENDING_PAYMENT', 2, 'Order placed by customer'),
+ (1, 'PENDING_PAYMENT', 'PAID', NULL, 'Mock payment confirmed via UPI'),
+ (2, NULL, 'PENDING_PAYMENT', 2, 'Order placed by customer'),
+ (2, 'PENDING_PAYMENT', 'PAID', NULL, 'Mock payment confirmed via Card'),
+ (3, NULL, 'PENDING_PAYMENT', 2, 'Order placed by customer'),
+ (3, 'PENDING_PAYMENT', 'PAID', NULL, 'Payment settled'),
+ (3, 'PAID', 'PACKED', 6, 'Packed into Parcel Box P-2 by Rahul Warehouse'),
+ (4, NULL, 'PENDING_PAYMENT', 2, 'Order placed by customer'),
+ (4, 'PENDING_PAYMENT', 'PAID', NULL, 'Payment settled'),
+ (4, 'PAID', 'PACKED', 6, 'Packed with bubble wrap'),
+ (4, 'PACKED', 'SHIPPED', 6, 'Dispatched via BlueDart Express (AWB: TRK-T3-99214)'),
+ (5, NULL, 'PENDING_PAYMENT', 2, 'Order placed by customer'),
+ (5, 'PENDING_PAYMENT', 'PAID', NULL, 'Payment settled via NetBanking');
