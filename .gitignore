@@ -1,0 +1,19 @@
+# dependencies and build output
+node_modules/
+frontend/dist/
+
+# secrets: real settings live in .env (copy .env.example), never on GitHub
+.env
+.env.*
+!.env.example
+
+# logs and OS / editor files
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# files uploaded by sellers while testing locally
+server/uploads/

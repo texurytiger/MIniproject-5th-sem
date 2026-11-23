@@ -1,0 +1,9 @@
+build(): 7 roles, cycles=[] in 22.68 ms
+chainOf(FINANCE) = FINANCE -> EMPLOYEE | effective = 7 perms | product:read granted by EMPLOYEE
+has(FINANCE, 'refund:approve') = true  avg 31 ns over 100k lookups
+decide(seller #3, product:update, owner 3) = ALLOW GRANTED_OWN
+decide(seller #3, product:update, owner 4) = DENY NOT_OWNER
+decide(CEO #7, product:read) = DENY NO_PERMISSION
+wouldCreateCycle(EMPLOYEE, parent=FINANCE) = true | (FINANCE, parent=EMPLOYEE) = false
+dl('headphnes','headphones') = 1 | dl('lmap','lamp') = 1
+correct('headphnes') = headphones | correct('xyzqw') = null

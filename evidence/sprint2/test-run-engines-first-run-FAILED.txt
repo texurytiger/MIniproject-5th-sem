@@ -1,0 +1,116 @@
+# E2/E3/E4 FIRST run · npm run test:engines · 2026-11-16 · 2 FAILURES kept as evidence (D-05, D-06)
+TAP version 13
+# [config] Using the development JWT secret. Fine on your laptop; never in production.
+# Subtest: TC-E2-01 storefront shows only APPROVED products
+ok 1 - TC-E2-01 storefront shows only APPROVED products
+  ---
+  duration_ms: 41.80755
+  type: 'test'
+  ...
+# Subtest: TC-E2-02 seller sets stock to 0 -> SOLD_OUT and hidden; restock -> APPROVED
+ok 2 - TC-E2-02 seller sets stock to 0 -> SOLD_OUT and hidden; restock -> APPROVED
+  ---
+  duration_ms: 129.098023
+  type: 'test'
+  ...
+# Subtest: TC-E2-03 negative price / fractional stock -> 400 with field messages, nothing saved
+ok 3 - TC-E2-03 negative price / fractional stock -> 400 with field messages, nothing saved
+  ---
+  duration_ms: 109.329906
+  type: 'test'
+  ...
+# Subtest: TC-E2-04 warehouse can correct stock but cannot change price
+ok 4 - TC-E2-04 warehouse can correct stock but cannot change price
+  ---
+  duration_ms: 112.822787
+  type: 'test'
+  ...
+# Subtest: TC-E3-01 CHECK constraint refuses negative stock even if code is bypassed
+ok 5 - TC-E3-01 CHECK constraint refuses negative stock even if code is bypassed
+  ---
+  duration_ms: 14.235081
+  type: 'test'
+  ...
+# Subtest: TC-E3-02 UNIQUE email refuses a duplicate account at database level
+ok 6 - TC-E3-02 UNIQUE email refuses a duplicate account at database level
+  ---
+  duration_ms: 4.343469
+  type: 'test'
+  ...
+# Subtest: TC-E3-03 foreign key refuses a product for a seller that does not exist
+ok 7 - TC-E3-03 foreign key refuses a product for a seller that does not exist
+  ---
+  duration_ms: 3.994476
+  type: 'test'
+  ...
+# Subtest: TC-E3-04 grant + revoke run in one transaction: a bad id rolls back the whole change
+ok 8 - TC-E3-04 grant + revoke run in one transaction: a bad id rolls back the whole change
+  ---
+  duration_ms: 11.701204
+  type: 'test'
+  ...
+# Subtest: TC-E3-05 SQL injection text in search is treated as plain text
+not ok 9 - TC-E3-05 SQL injection text in search is treated as plain text
+  ---
+  duration_ms: 6.002207
+  type: 'test'
+  location: '/home/claude/team3/tests/engines.test.js:93:1'
+  failureType: 'testCodeFailure'
+  error: '500 == 200'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 200
+  actual: 500
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (/home/claude/team3/tests/engines.test.js:95:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: TC-E4-01 broken JSON body -> 400 BAD_JSON in the standard error format
+ok 10 - TC-E4-01 broken JSON body -> 400 BAD_JSON in the standard error format
+  ---
+  duration_ms: 5.21109
+  type: 'test'
+  ...
+# Subtest: TC-E4-02 unknown API route -> 404 JSON, not an HTML page
+ok 11 - TC-E4-02 unknown API route -> 404 JSON, not an HTML page
+  ---
+  duration_ms: 3.627315
+  type: 'test'
+  ...
+# Subtest: TC-E4-03 security headers present; framework not advertised
+ok 12 - TC-E4-03 security headers present; framework not advertised
+  ---
+  duration_ms: 3.274222
+  type: 'test'
+  ...
+# Subtest: TC-E4-04 body over 100 KB is refused
+not ok 13 - TC-E4-04 body over 100 KB is refused
+  ---
+  duration_ms: 9.102048
+  type: 'test'
+  location: '/home/claude/team3/tests/engines.test.js:120:1'
+  failureType: 'testCodeFailure'
+  error: 'false == true'
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: true
+  actual: false
+  operator: '=='
+  stack: |-
+    TestContext.<anonymous> (/home/claude/team3/tests/engines.test.js:122:10)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 11
+# fail 2
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 563.28802

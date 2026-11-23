@@ -1,0 +1,320 @@
+Team 3 Store - full automated test run
+Command: npm run db:reset, then npm run dev (API on :4000), then npm run test:all
+Date: 23 Nov 2026
+
+
+> team3-store@1.0.0 test:all
+> node --test --test-concurrency=1 tests/e1.test.js tests/engines.test.js tests/baguette.test.js
+
+TAP version 13
+# Subtest: TC-BG-01 one product sits in several categories
+ok 1 - TC-BG-01 one product sits in several categories
+  ---
+  duration_ms: 51.400613
+  type: 'test'
+  ...
+# Subtest: TC-BG-02 filtering a parent category includes its sub-categories
+ok 2 - TC-BG-02 filtering a parent category includes its sub-categories
+  ---
+  duration_ms: 12.394932
+  type: 'test'
+  ...
+# Subtest: TC-BG-03 price range: min above max is refused
+ok 3 - TC-BG-03 price range: min above max is refused
+  ---
+  duration_ms: 3.494082
+  type: 'test'
+  ...
+# Subtest: TC-BG-04 moving a category under its own child -> 409 CYCLE
+ok 4 - TC-BG-04 moving a category under its own child -> 409 CYCLE
+  ---
+  duration_ms: 103.832728
+  type: 'test'
+  ...
+# Subtest: TC-BG-05 deleting a category that is in use -> 409 IN_USE; an empty one deletes
+ok 5 - TC-BG-05 deleting a category that is in use -> 409 IN_USE; an empty one deletes
+  ---
+  duration_ms: 84.241926
+  type: 'test'
+  ...
+# Subtest: TC-BG-06 sellers cannot manage categories
+ok 6 - TC-BG-06 sellers cannot manage categories
+  ---
+  duration_ms: 72.805098
+  type: 'test'
+  ...
+# Subtest: TC-BG-07 seller cannot re-categorise another seller's product -> 403
+ok 7 - TC-BG-07 seller cannot re-categorise another seller's product -> 403
+  ---
+  duration_ms: 76.732194
+  type: 'test'
+  ...
+# Subtest: TC-BG-08 public shop page loads by its web address
+ok 8 - TC-BG-08 public shop page loads by its web address
+  ---
+  duration_ms: 4.48084
+  type: 'test'
+  ...
+# Subtest: TC-BG-09 taking another shop's web address -> 409 SLUG_TAKEN
+ok 9 - TC-BG-09 taking another shop's web address -> 409 SLUG_TAKEN
+  ---
+  duration_ms: 77.498836
+  type: 'test'
+  ...
+# Subtest: TC-BG-10 logo upload that is not really an image -> 400
+ok 10 - TC-BG-10 logo upload that is not really an image -> 400
+  ---
+  duration_ms: 72.141987
+  type: 'test'
+  ...
+# Subtest: TC-BG-11 customers cannot edit shops
+ok 11 - TC-BG-11 customers cannot edit shops
+  ---
+  duration_ms: 72.40694
+  type: 'test'
+  ...
+# Subtest: TC-BG-12 seller insights: real catalog numbers, sales marked as pending
+ok 12 - TC-BG-12 seller insights: real catalog numbers, sales marked as pending
+  ---
+  duration_ms: 78.673518
+  type: 'test'
+  ...
+# Subtest: TC-BG-13 admin overview is admin-only
+ok 13 - TC-BG-13 admin overview is admin-only
+  ---
+  duration_ms: 155.533899
+  type: 'test'
+  ...
+# Subtest: FR-02 sign-in rules
+    # Subtest: correct staff sign-in returns a token
+    ok 1 - correct staff sign-in returns a token
+      ---
+      duration_ms: 106.722102
+      type: 'test'
+      ...
+    # Subtest: wrong password -> 401 generic
+    ok 2 - wrong password -> 401 generic
+      ---
+      duration_ms: 74.69419
+      type: 'test'
+      ...
+    # Subtest: unknown email -> same 401 message
+    ok 3 - unknown email -> same 401 message
+      ---
+      duration_ms: 86.91868
+      type: 'test'
+      ...
+    # Subtest: finance on admin portal -> 401 WRONG_PORTAL
+    ok 4 - finance on admin portal -> 401 WRONG_PORTAL
+      ---
+      duration_ms: 71.842145
+      type: 'test'
+      ...
+    # Subtest: finance picking SELLER -> 401 ROLE_MISMATCH with hint
+    ok 5 - finance picking SELLER -> 401 ROLE_MISMATCH with hint
+      ---
+      duration_ms: 69.065824
+      type: 'test'
+      ...
+    # Subtest: admin on staff portal -> 401
+    ok 6 - admin on staff portal -> 401
+      ---
+      duration_ms: 73.019841
+      type: 'test'
+      ...
+    # Subtest: staff page, no role sent: finance and warehouse sign in, role comes from the account
+    ok 7 - staff page, no role sent: finance and warehouse sign in, role comes from the account
+      ---
+      duration_ms: 141.388779
+      type: 'test'
+      ...
+    # Subtest: staff page: a sent role is ignored (finance sending WAREHOUSE_STAFF is still FINANCE)
+    ok 8 - staff page: a sent role is ignored (finance sending WAREHOUSE_STAFF is still FINANCE)
+      ---
+      duration_ms: 70.619122
+      type: 'test'
+      ...
+    # Subtest: staff page refuses customers and sellers -> 401 WRONG_PORTAL with hint
+    ok 9 - staff page refuses customers and sellers -> 401 WRONG_PORTAL with hint
+      ---
+      duration_ms: 141.195622
+      type: 'test'
+      ...
+    # Subtest: staff page refuses admins -> 401 WRONG_PORTAL
+    ok 10 - staff page refuses admins -> 401 WRONG_PORTAL
+      ---
+      duration_ms: 76.345765
+      type: 'test'
+      ...
+    # Subtest: FR-06 deactivated account -> 401 INACTIVE
+    ok 11 - FR-06 deactivated account -> 401 INACTIVE
+      ---
+      duration_ms: 68.734631
+      type: 'test'
+      ...
+    1..11
+ok 14 - FR-02 sign-in rules
+  ---
+  duration_ms: 982.556165
+  type: 'test'
+  ...
+# Subtest: FR-01 register always creates a CUSTOMER
+ok 15 - FR-01 register always creates a CUSTOMER
+  ---
+  duration_ms: 75.293708
+  type: 'test'
+  ...
+# Subtest: FR-07/08 role tree and effective permissions
+ok 16 - FR-07/08 role tree and effective permissions
+  ---
+  duration_ms: 71.3805
+  type: 'test'
+  ...
+# Subtest: FR-09 deny by default
+ok 17 - FR-09 deny by default
+  ---
+  duration_ms: 152.034653
+  type: 'test'
+  ...
+# Subtest: FR-10 ownership (Access Lab and a real write route)
+ok 18 - FR-10 ownership (Access Lab and a real write route)
+  ---
+  duration_ms: 82.927663
+  type: 'test'
+  ...
+# Subtest: FR-07 admin rules: cycle rejected, no self role change
+ok 19 - FR-07 admin rules: cycle rejected, no self role change
+  ---
+  duration_ms: 78.106915
+  type: 'test'
+  ...
+# Subtest: Role change applies on the next request
+ok 20 - Role change applies on the next request
+  ---
+  duration_ms: 144.472525
+  type: 'test'
+  ...
+# Subtest: Session revocation: logout and deactivation kill old tokens
+ok 21 - Session revocation: logout and deactivation kill old tokens
+  ---
+  duration_ms: 226.628246
+  type: 'test'
+  ...
+# Subtest: Lockout after 5 wrong passwords
+ok 22 - Lockout after 5 wrong passwords
+  ---
+  duration_ms: 415.466893
+  type: 'test'
+  ...
+# Subtest: Lockout cannot shut out the real owner: a known device still gets in
+ok 23 - Lockout cannot shut out the real owner: a known device still gets in
+  ---
+  duration_ms: 576.211746
+  type: 'test'
+  ...
+# Subtest: Known device still needs the right password
+ok 24 - Known device still needs the right password
+  ---
+  duration_ms: 141.101936
+  type: 'test'
+  ...
+# Subtest: FR-11 every decision is audited
+ok 25 - FR-11 every decision is audited
+  ---
+  duration_ms: 76.990904
+  type: 'test'
+  ...
+# Subtest: E1 typo search corrects misspellings
+ok 26 - E1 typo search corrects misspellings
+  ---
+  duration_ms: 4.772346
+  type: 'test'
+  ...
+# [config] Using the development JWT secret. Fine on your laptop; never in production.
+# Subtest: TC-E2-01 storefront shows only APPROVED products
+ok 27 - TC-E2-01 storefront shows only APPROVED products
+  ---
+  duration_ms: 27.735946
+  type: 'test'
+  ...
+# Subtest: TC-E2-02 seller sets stock to 0 -> SOLD_OUT and hidden; restock -> APPROVED
+ok 28 - TC-E2-02 seller sets stock to 0 -> SOLD_OUT and hidden; restock -> APPROVED
+  ---
+  duration_ms: 86.462476
+  type: 'test'
+  ...
+# Subtest: TC-E2-03 negative price / fractional stock -> 400 with field messages, nothing saved
+ok 29 - TC-E2-03 negative price / fractional stock -> 400 with field messages, nothing saved
+  ---
+  duration_ms: 77.79462
+  type: 'test'
+  ...
+# Subtest: TC-E2-04 warehouse can correct stock but cannot change price
+ok 30 - TC-E2-04 warehouse can correct stock but cannot change price
+  ---
+  duration_ms: 77.603047
+  type: 'test'
+  ...
+# Subtest: TC-E3-01 CHECK constraint refuses negative stock even if code is bypassed
+ok 31 - TC-E3-01 CHECK constraint refuses negative stock even if code is bypassed
+  ---
+  duration_ms: 9.238771
+  type: 'test'
+  ...
+# Subtest: TC-E3-02 UNIQUE email refuses a duplicate account at database level
+ok 32 - TC-E3-02 UNIQUE email refuses a duplicate account at database level
+  ---
+  duration_ms: 2.143502
+  type: 'test'
+  ...
+# Subtest: TC-E3-03 foreign key refuses a product for a seller that does not exist
+ok 33 - TC-E3-03 foreign key refuses a product for a seller that does not exist
+  ---
+  duration_ms: 1.72983
+  type: 'test'
+  ...
+# Subtest: TC-E3-04 grant + revoke run in one transaction: a bad id rolls back the whole change
+ok 34 - TC-E3-04 grant + revoke run in one transaction: a bad id rolls back the whole change
+  ---
+  duration_ms: 6.635447
+  type: 'test'
+  ...
+# Subtest: TC-E3-05 SQL injection text in search is treated as plain text
+ok 35 - TC-E3-05 SQL injection text in search is treated as plain text
+  ---
+  duration_ms: 3.013801
+  type: 'test'
+  ...
+# Subtest: TC-E4-01 broken JSON body -> 400 BAD_JSON in the standard error format
+ok 36 - TC-E4-01 broken JSON body -> 400 BAD_JSON in the standard error format
+  ---
+  duration_ms: 2.020809
+  type: 'test'
+  ...
+# Subtest: TC-E4-02 unknown API route -> 404 JSON, not an HTML page
+ok 37 - TC-E4-02 unknown API route -> 404 JSON, not an HTML page
+  ---
+  duration_ms: 1.000762
+  type: 'test'
+  ...
+# Subtest: TC-E4-03 security headers present; framework not advertised
+ok 38 - TC-E4-03 security headers present; framework not advertised
+  ---
+  duration_ms: 4.082545
+  type: 'test'
+  ...
+# Subtest: TC-E4-04 body over 100 KB is refused
+ok 39 - TC-E4-04 body over 100 KB is refused
+  ---
+  duration_ms: 2.560019
+  type: 'test'
+  ...
+1..39
+# tests 50
+# suites 0
+# pass 50
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4344.76329

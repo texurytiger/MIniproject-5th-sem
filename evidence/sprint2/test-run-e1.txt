@@ -1,0 +1,142 @@
+# E1 test run · npm test · 2026-11-16 · after commit caae600 + fixes D-05/D-06
+
+> team3-store@1.0.0 test
+> node --test tests/e1.test.js
+
+TAP version 13
+# Subtest: FR-02 sign-in rules
+    # Subtest: correct staff sign-in returns a token
+    ok 1 - correct staff sign-in returns a token
+      ---
+      duration_ms: 123.698871
+      type: 'test'
+      ...
+    # Subtest: wrong password -> 401 generic
+    ok 2 - wrong password -> 401 generic
+      ---
+      duration_ms: 93.849633
+      type: 'test'
+      ...
+    # Subtest: unknown email -> same 401 message
+    ok 3 - unknown email -> same 401 message
+      ---
+      duration_ms: 86.098847
+      type: 'test'
+      ...
+    # Subtest: finance on admin portal -> 401 WRONG_PORTAL
+    ok 4 - finance on admin portal -> 401 WRONG_PORTAL
+      ---
+      duration_ms: 90.541191
+      type: 'test'
+      ...
+    # Subtest: finance picking SELLER -> 401 ROLE_MISMATCH with hint
+    ok 5 - finance picking SELLER -> 401 ROLE_MISMATCH with hint
+      ---
+      duration_ms: 87.170514
+      type: 'test'
+      ...
+    # Subtest: admin on staff portal -> 401
+    ok 6 - admin on staff portal -> 401
+      ---
+      duration_ms: 84.495181
+      type: 'test'
+      ...
+    # Subtest: staff portal without role -> 400
+    ok 7 - staff portal without role -> 400
+      ---
+      duration_ms: 3.345281
+      type: 'test'
+      ...
+    # Subtest: FR-06 deactivated account -> 401 INACTIVE
+    ok 8 - FR-06 deactivated account -> 401 INACTIVE
+      ---
+      duration_ms: 154.96117
+      type: 'test'
+      ...
+    1..8
+ok 1 - FR-02 sign-in rules
+  ---
+  duration_ms: 726.127761
+  type: 'test'
+  ...
+# Subtest: FR-01 register always creates a CUSTOMER
+ok 2 - FR-01 register always creates a CUSTOMER
+  ---
+  duration_ms: 98.364895
+  type: 'test'
+  ...
+# Subtest: FR-07/08 role tree and effective permissions
+ok 3 - FR-07/08 role tree and effective permissions
+  ---
+  duration_ms: 96.546328
+  type: 'test'
+  ...
+# Subtest: FR-09 deny by default
+ok 4 - FR-09 deny by default
+  ---
+  duration_ms: 198.481972
+  type: 'test'
+  ...
+# Subtest: FR-10 ownership (Access Lab and a real write route)
+ok 5 - FR-10 ownership (Access Lab and a real write route)
+  ---
+  duration_ms: 124.29475
+  type: 'test'
+  ...
+# Subtest: FR-07 admin rules: cycle rejected, no self role change
+ok 6 - FR-07 admin rules: cycle rejected, no self role change
+  ---
+  duration_ms: 106.085581
+  type: 'test'
+  ...
+# Subtest: Role change applies on the next request
+ok 7 - Role change applies on the next request
+  ---
+  duration_ms: 186.943852
+  type: 'test'
+  ...
+# Subtest: Session revocation: logout and deactivation kill old tokens
+ok 8 - Session revocation: logout and deactivation kill old tokens
+  ---
+  duration_ms: 287.99
+  type: 'test'
+  ...
+# Subtest: Lockout after 5 wrong passwords
+ok 9 - Lockout after 5 wrong passwords
+  ---
+  duration_ms: 527.820792
+  type: 'test'
+  ...
+# Subtest: Lockout cannot shut out the real owner: a known device still gets in
+ok 10 - Lockout cannot shut out the real owner: a known device still gets in
+  ---
+  duration_ms: 702.22351
+  type: 'test'
+  ...
+# Subtest: Known device still needs the right password
+ok 11 - Known device still needs the right password
+  ---
+  duration_ms: 173.400209
+  type: 'test'
+  ...
+# Subtest: FR-11 every decision is audited
+ok 12 - FR-11 every decision is audited
+  ---
+  duration_ms: 93.683178
+  type: 'test'
+  ...
+# Subtest: E1 typo search corrects misspellings
+ok 13 - E1 typo search corrects misspellings
+  ---
+  duration_ms: 4.345021
+  type: 'test'
+  ...
+1..13
+# tests 21
+# suites 0
+# pass 21
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3377.903055
