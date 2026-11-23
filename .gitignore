@@ -17,3 +17,6 @@ Thumbs.db
 
 # files uploaded by sellers while testing locally
 server/uploads/
+
+# local experimental testing sandbox
+test/

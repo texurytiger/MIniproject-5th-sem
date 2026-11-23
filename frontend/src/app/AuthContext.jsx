@@ -89,6 +89,11 @@ export function AuthProvider({ children }) {
     return login(email, password, 'staff', 'CUSTOMER');
   }, [login]);
 
+  const registerSeller = useCallback(async (name, email, password, shopName, shopSlug) => {
+    await api('/auth/register-seller', { method: 'POST', body: { name, email, password, shopName, shopSlug }, auth: false });
+    return login(email, password, 'staff', 'SELLER');
+  }, [login]);
+
   /** Server-side logout: bumps token_version, so this token (and any copy of it) stops working. */
   const logout = useCallback(async () => {
     try { await api('/auth/logout', { method: 'POST' }); } catch { /* already invalid */ }
@@ -109,9 +114,9 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(() => ({
-    me, loading, notice, setNotice, login, register, logout, refresh, changePassword, updateName,
+    me, loading, notice, setNotice, login, register, registerSeller, logout, refresh, changePassword, updateName,
     can: (permission) => !!me && me.permissions.includes(permission),
-  }), [me, loading, notice, login, register, logout, refresh, changePassword, updateName]);
+  }), [me, loading, notice, login, register, registerSeller, logout, refresh, changePassword, updateName]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

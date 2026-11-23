@@ -15,6 +15,7 @@ const { HttpError, wrap, validator, EMAIL, toInt } = require('../../core/http');
 
 const r = express.Router();
 const DUMMY_HASH = '$2b$10$KIMPw0dfl5svl90Qyva9aesnZeCvQ6lUrRl14FDBu2JTvWRMJ24ly';
+const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role });
 
 function meOf(user) {
@@ -38,6 +39,60 @@ r.post('/register', wrap(async (req, res) => {
   const user = await data.users.byId(id);
   await auditLogin(user, email, 'ALLOW', 'REGISTERED', req.ip);
   res.status(201).json({ user: publicUser(user) });
+}));
+
+/**
+ * Seller registration: creates account with role SELLER and initializes the seller's storefront shop.
+ */
+r.post('/register-seller', wrap(async (req, res) => {
+  const name = String(req.body.name || '').trim();
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+  const shopName = String(req.body.shopName || req.body.name || '').trim();
+  const rawSlug = String(req.body.shopSlug || shopName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/&/g, 'and')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 60);
+
+  validator()
+    .check(name.length >= 2 && name.length <= 80, 'name', 'must be 2–80 characters')
+    .check(EMAIL.test(email), 'email', 'is not a valid address')
+    .check(password.length >= 8, 'password', 'must be at least 8 characters')
+    .check(/[A-Za-z]/.test(password) && /\d/.test(password), 'password', 'needs at least one letter and one number')
+    .check(shopName.length >= 2 && shopName.length <= 80, 'shopName', 'must be 2–80 characters')
+    .check(SLUG.test(rawSlug) && rawSlug.length >= 3 && rawSlug.length <= 60, 'shopSlug', 'use 3–60 lowercase letters, digits and dashes (e.g. kavya-crafts)')
+    .throwIfAny();
+
+  if (await data.users.byEmailWithHash(email)) {
+    throw new HttpError(409, 'EMAIL_TAKEN', 'An account with this email already exists.', { email: 'is already registered' });
+  }
+
+  if (await data.shops.slugTaken(rawSlug, 0)) {
+    throw new HttpError(409, 'SLUG_TAKEN', 'Another shop already uses that web address.', { shopSlug: 'already taken' });
+  }
+
+  const roleId = cache.state.byName.get('SELLER') || 6;
+  const passwordHash = await bcrypt.hash(password, config.bcryptCost);
+  const id = await data.users.create({ name, email, passwordHash, roleId });
+
+  try {
+    await data.shops.upsert(id, {
+      slug: rawSlug,
+      name: shopName,
+      about: `Welcome to ${shopName}. Browse our authentic items handcrafted with care.`,
+      returnPolicy: 'Returns accepted within 7 days of delivery in original packaging.'
+    });
+  } catch (err) {
+    await data.users.setActive(id, false);
+    throw err;
+  }
+
+  const user = await data.users.byId(id);
+  await auditLogin(user, email, 'ALLOW', 'SELLER_REGISTERED', req.ip);
+  res.status(201).json({ user: publicUser(user), shop: { slug: rawSlug, name: shopName } });
 }));
 
 /**

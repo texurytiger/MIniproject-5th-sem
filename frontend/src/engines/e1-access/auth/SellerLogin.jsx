@@ -27,7 +27,7 @@ export default function SellerLogin() {
       title="Seller Central"
       sub="Run your shop: listings, stock, your shop page and how it is doing."
       headline={['Your shop,', 'freshly', 'baked']}
-      foot={<>Seller accounts are created by the {BRAND.name} team. Shopping instead? <Link to="/login">Customer sign-in</Link></>}
+      foot={<>New seller? <Link to="/seller/register">Create a seller account</Link> · Shopping instead? <Link to="/login">Customer sign-in</Link></>}
     >
       <SignInError error={error} />
       <form onSubmit={submit} noValidate className="bg-auth-form">

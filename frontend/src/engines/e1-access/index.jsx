@@ -2,6 +2,7 @@ import { Navigate } from 'react-router-dom';
 import CustomerLogin from './auth/CustomerLogin';
 import RegisterPage from './auth/RegisterPage';
 import SellerLogin from './auth/SellerLogin';
+import SellerRegister from './auth/SellerRegister';
 import StaffLogin from './auth/StaffLogin';
 import AdminLogin from './auth/AdminLogin';
 import AccountPage from './pages/AccountPage';
@@ -25,6 +26,7 @@ export default {
     { path: '/login', element: <CustomerLogin />, layout: 'bare', public: true },             // FR-02
     { path: '/register', element: <RegisterPage />, layout: 'bare', public: true },           // FR-01
     { path: '/seller/login', element: <SellerLogin />, layout: 'bare', public: true },        // FR-02
+    { path: '/seller/register', element: <SellerRegister />, layout: 'bare', public: true },
     { path: '/staff/login', element: <StaffLogin />, layout: 'bare', public: true },          // FR-02
     { path: '/admin/login', element: <AdminLogin />, layout: 'bare', public: true },          // FR-02
     { path: '/account', element: <AccountPage />, layout: 'store' },                          // FR-03, 04, 08
