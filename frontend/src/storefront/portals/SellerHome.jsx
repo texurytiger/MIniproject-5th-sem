@@ -237,8 +237,259 @@ function OwnershipCheck({ myId }) {
   );
 }
 
+function NewProductCard({ cats, tree, onCreated, onCancel }) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [price, setPrice] = useState('');
+  const [mrp, setMrp] = useState('');
+  const [stock, setStock] = useState('10');
+  const [catIds, setCatIds] = useState([]);
+  const [image, setImage] = useState('vase');
+  const [imageUrl, setImageUrl] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function handleImageFile(file) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+      setError('Choose a PNG, JPG or WebP image.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be under 5 MB.');
+      return;
+    }
+    setUploading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/seller/products/upload-image', {
+        method: 'POST',
+        headers: { 'Content-Type': file.type, Authorization: `Bearer ${tokenStore.get()}` },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || `Upload failed (${res.status})`);
+      setImageUrl(data.imageUrl);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function submit(e) {
+    e.preventDefault();
+    setError(null);
+    if (!name.trim() || name.trim().length < 2) {
+      setError('Enter a product name (at least 2 characters).');
+      return;
+    }
+    const numPrice = Number(price);
+    if (!price || isNaN(numPrice) || numPrice < 0) {
+      setError('Enter a valid selling price.');
+      return;
+    }
+    const numMrp = mrp ? Number(mrp) : numPrice;
+    if (isNaN(numMrp) || numMrp < numPrice) {
+      setError('MRP must be at least the selling price.');
+      return;
+    }
+    const numStock = Number(stock);
+    if (isNaN(numStock) || numStock < 0) {
+      setError('Enter a valid stock number.');
+      return;
+    }
+    if (!catIds.length) {
+      setError('Pick at least one category.');
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const data = await api('/seller/products', {
+        method: 'POST',
+        body: {
+          name: name.trim(),
+          description: description.trim(),
+          price: numPrice,
+          mrp: numMrp,
+          stock: Math.floor(numStock),
+          image,
+          imageUrl: imageUrl || null,
+          categoryIds: catIds,
+        },
+      });
+      onCreated(data.product);
+    } catch (e) {
+      setError(e.details ? Object.entries(e.details).map(([k, v]) => `${k} ${v}`).join(', ') : e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="ws-card" style={{ marginBottom: '24px', borderColor: 'var(--line-2)' }}>
+      <div className="chart-head" style={{ marginBottom: '16px' }}>
+        <div>
+          <h2>Add new product to your shop</h2>
+          <p className="muted small">List a handcrafted item with photo, pricing, inventory stock, and categories.</p>
+        </div>
+        <button type="button" className="btn small" onClick={onCancel}><Icon name="x" />Cancel</button>
+      </div>
+
+      {error && (
+        <div className="alert error" style={{ marginBottom: '16px' }}>
+          <Icon name="alert" /><span>{error}</span>
+        </div>
+      )}
+
+      <form onSubmit={submit} noValidate>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+          <div>
+            <label className="field-label" htmlFor="np-name">Product Name *</label>
+            <input
+              id="np-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Stoneware Ceramic Mug"
+              required
+              autoFocus
+            />
+
+            <label className="field-label" htmlFor="np-desc" style={{ marginTop: '12px' }}>Description</label>
+            <textarea
+              id="np-desc"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Details on material, size, care, or crafting technique..."
+              maxLength={400}
+              style={{ minHeight: '80px' }}
+            />
+            <small className="muted" style={{ display: 'block', fontSize: '11px', textAlign: 'right' }}>{description.length}/400</small>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginTop: '12px' }}>
+              <div>
+                <label className="field-label" htmlFor="np-price">Selling Price (₹) *</label>
+                <input
+                  id="np-price"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  placeholder="e.g. 1499"
+                  required
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="np-mrp">MRP / List (₹)</label>
+                <input
+                  id="np-mrp"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={mrp}
+                  onChange={(e) => setMrp(e.target.value)}
+                  placeholder={price ? `e.g. ${Math.round(Number(price) * 1.2)}` : 'e.g. 1999'}
+                />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="np-stock">Stock Quantity *</label>
+                <input
+                  id="np-stock"
+                  type="number"
+                  min="0"
+                  value={stock}
+                  onChange={(e) => setStock(e.target.value)}
+                  required
+                />
+              </div>
+            </div>
+
+            <div style={{ marginTop: '16px' }}>
+              <label className="field-label">Categories * (Select 1 to 8)</label>
+              <CategoryPicker tree={tree} value={catIds} onChange={setCatIds} />
+            </div>
+          </div>
+
+          <div>
+            <label className="field-label">Product Photo</label>
+            <div className="img-pick" style={{ marginTop: '4px', background: '#F8F6F1', padding: '14px', borderRadius: '10px' }}>
+              <div
+                className="img-prev"
+                style={{
+                  width: '100%',
+                  height: '180px',
+                  borderRadius: '8px',
+                  overflow: 'hidden',
+                  background: '#EDE6DE',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {imageUrl ? (
+                  <img src={imageUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                ) : (
+                  <ProductArt image={image} label={name || 'Preview'} />
+                )}
+              </div>
+
+              <div style={{ marginTop: '12px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <label className={`btn small primary ${uploading ? 'disabled' : ''}`}>
+                  <Icon name="edit" />{uploading ? 'Uploading…' : imageUrl ? 'Replace photo' : 'Upload photo'}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    hidden
+                    disabled={uploading}
+                    onChange={(e) => handleImageFile(e.target.files[0])}
+                  />
+                </label>
+                {imageUrl && (
+                  <button type="button" className="btn small" onClick={() => setImageUrl('')}>
+                    Remove
+                  </button>
+                )}
+              </div>
+              <small className="muted" style={{ display: 'block', marginTop: '6px', fontSize: '11.5px' }}>
+                PNG, JPG or WebP (up to 5 MB).
+              </small>
+
+              <label className="field-label" style={{ marginTop: '16px' }}>Fallback Illustration</label>
+              <select value={image} onChange={(e) => setImage(e.target.value)} style={{ width: '100%' }}>
+                <option value="vase">Vase / Pottery</option>
+                <option value="bowl">Bowl / Dish</option>
+                <option value="candle">Candle</option>
+                <option value="chair">Chair / Furniture</option>
+                <option value="lamp">Lamp / Lighting</option>
+                <option value="speaker">Speaker / Audio</option>
+                <option value="headphones">Headphones</option>
+                <option value="sleeve">Case / Sleeve</option>
+                <option value="bottle">Bottle / Skincare</option>
+                <option value="baguette">Baguette / Bakery</option>
+                <option value="book">Book / Notebook</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="row-actions" style={{ marginTop: '20px', justifyContent: 'flex-end', borderTop: '1px solid var(--line)', paddingTop: '16px' }}>
+          <button type="button" className="btn" onClick={onCancel} disabled={busy}>Cancel</button>
+          <button type="submit" className="btn primary" disabled={busy || uploading}>
+            {busy ? 'Publishing…' : 'Publish Product'}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function Inventory({ products, setProducts, cats, me }) {
   const [filter, setFilter] = useState('');
+  const [adding, setAdding] = useState(false);
   const tree = useMemo(() => buildTree(cats), [cats]);
   const shown = (products || []).filter((p) => `${p.name} ${p.categoryNames.join(' ')} ${p.status}`.toLowerCase().includes(filter.toLowerCase()));
   const saved = (np) => setProducts((list) => list.map((x) => (x.id === np.id ? np : x)));
@@ -246,8 +497,24 @@ function Inventory({ products, setProducts, cats, me }) {
     <>
       <div className="ws-head">
         <div><h1>Product inventory</h1><p>{products ? `${products.length} listing${products.length === 1 ? '' : 's'}` : 'loading…'} · prices, stock, categories and featured picks</p></div>
-        <div className="pt-search"><Icon name="search" /><input placeholder="Search your listings" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div className="pt-search"><Icon name="search" /><input placeholder="Search your listings" value={filter} onChange={(e) => setFilter(e.target.value)} /></div>
+          <button className="btn primary" onClick={() => setAdding(!adding)} style={{ whiteSpace: 'nowrap' }}>
+            <Icon name={adding ? 'x' : 'plus'} />{adding ? 'Cancel' : 'Upload product'}
+          </button>
+        </div>
       </div>
+      {adding && (
+        <NewProductCard
+          cats={cats}
+          tree={tree}
+          onCreated={(newP) => {
+            setProducts((list) => [newP, ...(list || [])]);
+            setAdding(false);
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      )}
       <section className="ws-card flush" style={{ padding: 0 }}>
         <table className="table inv">
           <thead><tr><th>Product</th><th>Status</th><th>Price</th><th>Available</th><th /></tr></thead>

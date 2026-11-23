@@ -107,6 +107,57 @@ r.get('/seller/products', requireUser, guard('product', 'create'), wrap(async (r
   res.json({ products: await data.catalog.bySeller(req.user.id) });
 }));
 
+/** Upload product photo (PNG, JPG, WebP up to 5 MB). */
+r.post('/seller/products/upload-image', requireUser, guard('product', 'create'),
+  express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '5mb' }),
+  wrap(async (req, res) => {
+    const buf = Buffer.isBuffer(req.body) ? req.body : null;
+    const kind = buf && MAGIC.find((m) => m.ok(buf));
+    if (!kind) throw new HttpError(400, 'VALIDATION', 'Upload a PNG, JPG or WebP image (up to 5 MB).', { file: 'not a PNG, JPG or WebP image' });
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+    const file = `product-${req.user.id}-${Date.now()}.${kind.ext}`;
+    fs.writeFileSync(path.join(UPLOAD_DIR, file), buf);
+    res.json({ imageUrl: `/api/uploads/${file}` });
+  }));
+
+/** Create/upload a new product with categories and photo. */
+r.post('/seller/products', requireUser, guard('product', 'create'), wrap(async (req, res) => {
+  const name = String(req.body.name || '').trim();
+  const description = String(req.body.description || '').trim();
+  const price = Number(req.body.price);
+  const mrp = req.body.mrp !== undefined && req.body.mrp !== '' ? Number(req.body.mrp) : price;
+  const stock = req.body.stock !== undefined && req.body.stock !== '' ? toInt(req.body.stock) : 0;
+  const image = String(req.body.image || 'product').trim().slice(0, 40);
+  const imageUrl = req.body.imageUrl ? String(req.body.imageUrl).trim() : null;
+  const categoryIds = Array.isArray(req.body.categoryIds) ? [...new Set(req.body.categoryIds.map(toInt))] : [];
+  const known = new Set((await data.categories.all()).map((c) => c.id));
+
+  validator()
+    .check(name.length >= 2 && name.length <= 120, 'name', 'must be 2 to 120 characters')
+    .check(description.length <= 400, 'description', 'must be 400 characters or fewer')
+    .check(Number.isFinite(price) && price >= 0 && price <= 10000000, 'price', 'must be 0 or more')
+    .check(Number.isFinite(mrp) && mrp >= price, 'mrp', 'must be at least the selling price')
+    .check(Number.isInteger(stock) && stock >= 0 && stock <= 100000, 'stock', 'must be a whole number, 0 or more')
+    .check(categoryIds.length >= 1 && categoryIds.length <= 8, 'categoryIds', 'pick between 1 and 8 categories')
+    .check(categoryIds.every((i) => known.has(i)), 'categoryIds', 'contains an unknown category')
+    .throwIfAny();
+
+  const productId = await data.catalog.create({
+    sellerId: req.user.id,
+    name,
+    description,
+    price,
+    mrp,
+    stock,
+    image,
+    imageUrl,
+    categoryIds,
+  });
+
+  const product = await data.catalog.byId(productId);
+  res.status(201).json({ product });
+}));
+
 /** FR-10: a seller holds product:update_own only, so this passes for their own rows and is 403 NOT_OWNER otherwise. */
 r.patch('/catalog/products/:id', requireUser, guard('product', 'update', ownerOfProduct), wrap(async (req, res) => {
   const price = req.body.price === undefined ? null : Number(req.body.price);

@@ -192,6 +192,32 @@ const catalog = {
        WHERE id = ?`, [price, stock, stock, id]);
   },
   approve: (id) => pool.query("UPDATE products SET status = IF(stock = 0, 'SOLD_OUT', 'APPROVED') WHERE id = ? AND status = 'PENDING'", [id]),
+  /** Create a new catalog item with its categories in ONE transaction. */
+  async create({ sellerId, name, description, price, mrp, stock, image, imageUrl, categoryIds }) {
+    const c = await pool.getConnection();
+    try {
+      await c.beginTransaction();
+      const [res] = await c.query(
+        `INSERT INTO products (seller_id, name, description, price, mrp, stock, image, image_url, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'APPROVED')`,
+        [sellerId, name, description || '', price, mrp != null ? mrp : price, stock || 0, image || 'book', imageUrl || null]
+      );
+      const productId = res.insertId;
+      if (categoryIds && categoryIds.length) {
+        await c.query(
+          'INSERT INTO product_categories (product_id, category_id) VALUES ?',
+          [categoryIds.map((cid) => [productId, cid])]
+        );
+      }
+      await c.commit();
+      return productId;
+    } catch (e) {
+      await c.rollback();
+      throw e;
+    } finally {
+      c.release();
+    }
+  },
   /** Replace a product's categories in ONE transaction (all or nothing). */
   async setCategories(productId, categoryIds) {
     const c = await pool.getConnection();
